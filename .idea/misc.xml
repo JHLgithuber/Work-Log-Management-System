@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="Black">
-    <option name="sdkName" value="uv (FastAPIProject)" />
+    <option name="sdkName" value="uv (WorkLogMgmtSys)" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="uv (FastAPIProject)" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="uv (WorkLogMgmtSys)" project-jdk-type="Python SDK" />
   <component name="PythonCompatibilityInspectionAdvertiser">
     <option name="version" value="3" />
   </component>
