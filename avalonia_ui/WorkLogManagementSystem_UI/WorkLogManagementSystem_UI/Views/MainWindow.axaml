@@ -7,6 +7,10 @@
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
         x:Class="WorkLogManagementSystem_UI.Views.MainWindow"
         Icon="/Assets/avalonia-logo.ico"
-        Title="WorkLogManagementSystem_UI">
+        Title="Work Log Management System"
+        Width="1180"
+        Height="760"
+        MinWidth="320"
+        MinHeight="480">
         <views:MainView />
 </Window>

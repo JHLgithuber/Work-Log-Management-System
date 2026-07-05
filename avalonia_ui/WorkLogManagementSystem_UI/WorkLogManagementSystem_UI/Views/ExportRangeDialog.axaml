@@ -1,0 +1,70 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="WorkLogManagementSystem_UI.Views.ExportRangeDialog"
+        Title="엑셀 내보내기"
+        Width="420"
+        SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <Style Selector="TextBlock.label">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppTextSecondaryBrush}"/>
+      <Setter Property="Margin" Value="0,0,0,4"/>
+    </Style>
+    <Style Selector="CalendarDatePicker.date-input">
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="MinWidth" Value="170"/>
+      <Setter Property="SelectedDateFormat" Value="Custom"/>
+      <Setter Property="CustomDateFormatString" Value="yyyy-MM-dd"/>
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="{DynamicResource AppAccentBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+  </Window.Styles>
+
+  <Border Background="{DynamicResource AppPageBackgroundBrush}"
+          Padding="20">
+    <StackPanel Spacing="16">
+      <TextBlock Text="엑셀 내보내기"
+                 FontSize="20"
+                 FontWeight="SemiBold"
+                 Foreground="{DynamicResource AppTextPrimaryBrush}"/>
+
+      <Grid ColumnDefinitions="*,*"
+            ColumnSpacing="10">
+        <StackPanel Grid.Column="0">
+          <TextBlock Classes="label"
+                     Text="시작일"/>
+          <CalendarDatePicker x:Name="StartDatePicker"
+                              Classes="date-input"/>
+        </StackPanel>
+
+        <StackPanel Grid.Column="1">
+          <TextBlock Classes="label"
+                     Text="종료일"/>
+          <CalendarDatePicker x:Name="EndDatePicker"
+                              Classes="date-input"/>
+        </StackPanel>
+      </Grid>
+
+      <TextBlock x:Name="ErrorText"
+                 Foreground="{DynamicResource AppErrorBrush}"
+                 TextWrapping="Wrap"
+                 IsVisible="False"/>
+
+      <StackPanel Orientation="Horizontal"
+                  HorizontalAlignment="Right"
+                  Spacing="8">
+        <Button Content="취소"
+                Click="OnCancelClicked"/>
+        <Button Classes="primary"
+                Content="내보내기"
+                Click="OnExportClicked"/>
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</Window>

@@ -1,0 +1,74 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="WorkLogManagementSystem_UI.Views.SettingsDialog"
+        Title="설정"
+        Width="460"
+        SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <Style Selector="TextBlock.label">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppTextSecondaryBrush}"/>
+      <Setter Property="Margin" Value="0,0,0,4"/>
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="InputMethod.IsInputMethodEnabled" Value="True"/>
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="{DynamicResource AppAccentBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+  </Window.Styles>
+
+  <Border Background="{DynamicResource AppPageBackgroundBrush}"
+          Padding="20">
+    <StackPanel Spacing="16">
+      <TextBlock Text="설정"
+                 FontSize="20"
+                 FontWeight="SemiBold"
+                 Foreground="{DynamicResource AppTextPrimaryBrush}"/>
+
+      <StackPanel>
+        <TextBlock Classes="label"
+                   Text="API 주소"/>
+        <TextBox x:Name="ApiBaseUrlTextBox"
+                 Watermark="http://localhost:8000"/>
+      </StackPanel>
+
+      <StackPanel>
+        <TextBlock Classes="label"
+                   Text="테마"/>
+        <StackPanel Orientation="Horizontal"
+                    Spacing="12">
+          <RadioButton x:Name="SystemThemeRadioButton"
+                       GroupName="ThemeMode"
+                       Content="시스템"/>
+          <RadioButton x:Name="LightThemeRadioButton"
+                       GroupName="ThemeMode"
+                       Content="라이트"/>
+          <RadioButton x:Name="DarkThemeRadioButton"
+                       GroupName="ThemeMode"
+                       Content="다크"/>
+        </StackPanel>
+      </StackPanel>
+
+      <TextBlock x:Name="ErrorText"
+                 Foreground="{DynamicResource AppErrorBrush}"
+                 TextWrapping="Wrap"
+                 IsVisible="False"/>
+
+      <StackPanel Orientation="Horizontal"
+                  HorizontalAlignment="Right"
+                  Spacing="8">
+        <Button Content="취소"
+                Click="OnCancelClicked"/>
+        <Button Classes="primary"
+                Content="저장"
+                Click="OnSaveClicked"/>
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</Window>

@@ -3,14 +3,430 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:WorkLogManagementSystem_UI.ViewModels"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             xmlns:models="clr-namespace:WorkLogManagementSystem_UI.Models"
+             mc:Ignorable="d"
+             d:DesignWidth="1180"
+             d:DesignHeight="760"
              x:Class="WorkLogManagementSystem_UI.Views.MainView"
              x:DataType="vm:MainViewModel">
   <Design.DataContext>
-    <!-- This only sets the DataContext for the previewer in an IDE,
-         to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
     <vm:MainViewModel />
   </Design.DataContext>
 
-  <TextBlock Text="{Binding Greeting}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+  <UserControl.Styles>
+    <Style Selector="TextBlock.section-title">
+      <Setter Property="FontSize" Value="18"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppTextPrimaryBrush}"/>
+    </Style>
+    <Style Selector="TextBlock.label">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppTextSecondaryBrush}"/>
+      <Setter Property="Margin" Value="0,0,0,4"/>
+    </Style>
+    <Style Selector="Border.panel">
+      <Setter Property="Background" Value="{DynamicResource AppPanelBackgroundBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppPanelBorderBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="16"/>
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="InputMethod.IsInputMethodEnabled" Value="True"/>
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="{DynamicResource AppPrimaryBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppPrimaryBrush}"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="Button.toolbar">
+      <Setter Property="Background" Value="{DynamicResource AppToolbarButtonBackgroundBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppToolbarButtonForegroundBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppToolbarButtonBackgroundBrush}"/>
+      <Setter Property="Padding" Value="10,7"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="Button.icon-toolbar">
+      <Setter Property="Background" Value="{DynamicResource AppToolbarButtonBackgroundBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppToolbarButtonForegroundBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppToolbarButtonBackgroundBrush}"/>
+      <Setter Property="Width" Value="38"/>
+      <Setter Property="Height" Value="38"/>
+      <Setter Property="Padding" Value="0"/>
+    </Style>
+    <Style Selector="Button.icon-toolbar-accent">
+      <Setter Property="Background" Value="{DynamicResource AppAccentBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}"/>
+      <Setter Property="Width" Value="38"/>
+      <Setter Property="Height" Value="38"/>
+      <Setter Property="Padding" Value="0"/>
+    </Style>
+    <Style Selector="Button.toolbar-accent">
+      <Setter Property="Background" Value="{DynamicResource AppAccentBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}"/>
+      <Setter Property="Padding" Value="10,7"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="Button.danger">
+      <Setter Property="Background" Value="{DynamicResource AppDangerBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppDangerBrush}"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="Button.fit">
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="MinWidth" Value="0"/>
+      <Setter Property="Padding" Value="8,7"/>
+    </Style>
+    <Style Selector="Button.topbar-action:pointerover">
+      <Setter Property="Background" Value="{DynamicResource AppTopActionHoverBackgroundBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppTopActionHoverBorderBrush}"/>
+    </Style>
+    <Style Selector="Button.topbar-action:pressed">
+      <Setter Property="Background" Value="{DynamicResource AppTopActionPressedBackgroundBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppTopActionHoverBorderBrush}"/>
+    </Style>
+    <Style Selector="Button.topbar-action-accent:pointerover">
+      <Setter Property="Background" Value="{DynamicResource AppAccentHoverBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppTopActionAccentHoverBorderBrush}"/>
+    </Style>
+    <Style Selector="Button.topbar-action-accent:pressed">
+      <Setter Property="Background" Value="{DynamicResource AppAccentPressedBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppTopActionAccentHoverBorderBrush}"/>
+    </Style>
+    <Style Selector="TextBox.editor">
+      <Setter Property="MinHeight" Value="100"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="AcceptsReturn" Value="True"/>
+    </Style>
+    <Style Selector="CalendarDatePicker.date-input">
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="MinWidth" Value="170"/>
+      <Setter Property="SelectedDateFormat" Value="Custom"/>
+      <Setter Property="CustomDateFormatString" Value="yyyy-MM-dd"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Grid Background="{DynamicResource AppPageBackgroundBrush}" RowDefinitions="Auto,*">
+    <Border x:Name="TopBar"
+            Grid.Row="0"
+            Background="{DynamicResource AppTopBarBrush}"
+            Padding="10,8">
+      <Grid x:Name="TopBarShell"
+            ColumnDefinitions="*,Auto"
+            ColumnSpacing="12"
+            VerticalAlignment="Center">
+        <WrapPanel x:Name="TopBarInfoGroup"
+                   Grid.Column="0"
+                   Orientation="Horizontal"
+                   VerticalAlignment="Center">
+          <Button x:Name="TaskPaneToggleButton"
+                  Classes="icon-toolbar topbar-action"
+                  Margin="0,0,8,0"
+                  Click="OnTaskPaneToggleClicked"
+                  IsVisible="False"
+                  ToolTip.Tip="과업">
+            <PathIcon Width="18"
+                      Height="18"
+                      Data="M4 6H20V8H4V6ZM4 11H20V13H4V11ZM4 16H20V18H4V16Z"/>
+          </Button>
+          <TextBlock x:Name="AppTitleText"
+                     Text="Work Log"
+                     Foreground="{DynamicResource AppTopBarTextBrush}"
+                     FontSize="22"
+                     FontWeight="SemiBold"
+                     Margin="0,0,10,0"
+                     VerticalAlignment="Center"/>
+          <TextBlock x:Name="CurrentScopeText"
+                     Text="{Binding CurrentScopeLabel}"
+                     Foreground="{DynamicResource AppTopBarMutedBrush}"
+                     Margin="0,0,10,0"
+                     VerticalAlignment="Center"/>
+        </WrapPanel>
+
+        <StackPanel x:Name="TopBarActionGroup"
+                    Grid.Column="1"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center">
+          <Button x:Name="SettingsButton"
+                  Classes="toolbar topbar-action"
+                  Content="설정"
+                  Command="{Binding OpenSettingsCommand}"/>
+          <Button x:Name="RefreshButton"
+                  Classes="icon-toolbar topbar-action"
+                  Command="{Binding LoadTasksCommand}"
+                  ToolTip.Tip="새로고침">
+            <PathIcon Width="18"
+                      Height="18"
+                      Data="M17.65 6.35C16.2 4.9 14.21 4 12 4C7.58 4 4.01 7.58 4.01 12C4.01 16.42 7.58 20 12 20C15.73 20 18.84 17.45 19.73 14H17.65C16.83 16.33 14.61 18 12 18C8.69 18 6 15.31 6 12C6 8.69 8.69 6 12 6C13.66 6 15.14 6.69 16.22 7.78L13 11H20V4L17.65 6.35Z"/>
+          </Button>
+          <Button x:Name="ExportButton"
+                  Classes="icon-toolbar-accent topbar-action-accent"
+                  Command="{Binding ExportExcelCommand}"
+                  ToolTip.Tip="엑셀 내보내기">
+            <PathIcon Width="18"
+                      Height="18"
+                      Data="M5 20H19V18H5V20ZM19 9H15V3H9V9H5L12 16L19 9Z"/>
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="1">
+      <Grid x:Name="ResponsiveShell"
+            ColumnDefinitions="360,*"
+            RowDefinitions="*"
+            Margin="16"
+            ColumnSpacing="16">
+        <Border x:Name="TaskPaneOverlay"
+                Grid.Column="0"
+                Grid.Row="0"
+                Grid.ColumnSpan="2"
+                Background="#66000000"
+                IsVisible="False"
+                PointerPressed="OnTaskPaneOverlayPressed"/>
+        <Border x:Name="TaskListPanel"
+                Grid.Column="0"
+                Grid.Row="0"
+                Classes="panel"
+                VerticalAlignment="Stretch">
+          <DockPanel LastChildFill="True">
+            <StackPanel DockPanel.Dock="Top"
+                        Spacing="14">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0"
+                           Classes="section-title"
+                           Text="날짜별 과업"/>
+                <Button x:Name="TaskPaneCloseButton"
+                        Grid.Column="1"
+                        Classes="icon-toolbar"
+                        Width="34"
+                        Height="34"
+                        Padding="0"
+                        Click="OnTaskPaneCloseClicked"
+                        IsVisible="False"
+                        ToolTip.Tip="닫기">
+                  <PathIcon Width="18"
+                            Height="18"
+                            Data="M18.3 5.71L16.89 4.29L12 9.17L7.11 4.29L5.7 5.71L10.59 10.59L5.7 15.48L7.11 16.9L12 12L16.89 16.9L18.3 15.48L13.41 10.59L18.3 5.71Z"/>
+                </Button>
+              </Grid>
+
+              <Grid RowDefinitions="Auto,Auto"
+                    RowSpacing="8">
+                <CalendarDatePicker x:Name="TaskListDatePicker"
+                                    Grid.Row="0"
+                                    Classes="date-input"
+                                    SelectedDate="{Binding SelectedDate, Mode=TwoWay}"/>
+                <Grid Grid.Row="1"
+                      ColumnDefinitions="*,*,*"
+                      ColumnSpacing="8">
+                  <Button Grid.Column="0"
+                          Classes="fit"
+                          Content="전일"
+                          Command="{Binding MovePreviousDayCommand}"/>
+                  <Button Grid.Column="1"
+                          Classes="fit"
+                          Content="오늘"
+                          Command="{Binding MoveTodayCommand}"/>
+                  <Button Grid.Column="2"
+                          Classes="fit"
+                          Content="익일"
+                          Command="{Binding MoveNextDayCommand}"/>
+                </Grid>
+              </Grid>
+
+              <Grid ColumnDefinitions="*,*"
+                    ColumnSpacing="8">
+                <Button Grid.Column="0"
+                        Classes="primary fit"
+                        Content="최상위 과업 추가"
+                        Command="{Binding NewRootTaskCommand}"/>
+                <Button Grid.Column="1"
+                        Classes="fit"
+                        Content="하위 과업 추가"
+                        Command="{Binding NewChildTaskCommand}"/>
+              </Grid>
+
+            </StackPanel>
+
+            <TreeView Margin="0,18,0,0"
+                      ItemsSource="{Binding Tasks}"
+                      SelectedItem="{Binding SelectedTask, Mode=TwoWay}">
+              <TreeView.DataTemplates>
+                <TreeDataTemplate DataType="models:TaskDto"
+                                  ItemsSource="{Binding Children}">
+                  <Grid ColumnDefinitions="*,Auto"
+                        MinHeight="46"
+                        Margin="0,4">
+                    <StackPanel Grid.Column="0">
+                      <TextBlock Text="{Binding Title}"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource AppTextPrimaryBrush}"
+                                 TextTrimming="CharacterEllipsis"/>
+                      <TextBlock Text="{Binding DateSummary}"
+                                 FontSize="12"
+                                 Foreground="{DynamicResource AppTextSecondaryBrush}"/>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding Id}"
+                               Foreground="{DynamicResource AppTextMutedBrush}"
+                               Margin="12,0,0,0"
+                               VerticalAlignment="Center"/>
+                  </Grid>
+                </TreeDataTemplate>
+              </TreeView.DataTemplates>
+            </TreeView>
+          </DockPanel>
+        </Border>
+
+        <Border x:Name="EditorPanel"
+                Grid.Column="1"
+                Grid.Row="0"
+                Classes="panel"
+                VerticalAlignment="Stretch">
+          <DockPanel LastChildFill="True">
+            <Grid DockPanel.Dock="Top"
+                  ColumnDefinitions="*,Auto"
+                  ColumnSpacing="12">
+              <StackPanel Grid.Column="0">
+                <TextBlock Classes="section-title"
+                           Text="{Binding EditorModeLabel}"/>
+                <TextBlock Text="{Binding EditorParentTitleLabel}"
+                           Foreground="{DynamicResource AppTextSecondaryBrush}"
+                           IsVisible="{Binding HasEditorParentTitle}"/>
+              </StackPanel>
+
+              <StackPanel Grid.Column="1"
+                          Orientation="Horizontal"
+                          Spacing="8">
+                <Button Content="삭제"
+                        Classes="danger"
+                        IsEnabled="{Binding CanEditExistingTask}"
+                        Command="{Binding DeleteTaskCommand}"/>
+                <Button Content="저장"
+                        Classes="primary"
+                        IsEnabled="{Binding IsEditorEnabled}"
+                        Command="{Binding SaveTaskCommand}"/>
+              </StackPanel>
+            </Grid>
+
+            <ScrollViewer Margin="0,18,0,0"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+              <StackPanel Spacing="14"
+                          IsEnabled="{Binding IsEditorEnabled}">
+                <StackPanel>
+                  <TextBlock Classes="label"
+                             Text="제목"/>
+                  <TextBox Text="{Binding EditorTitle}"
+                           Watermark="과업 제목"/>
+                </StackPanel>
+
+                <Grid x:Name="EditorDateGrid"
+                      ColumnDefinitions="*,*,*"
+                      RowDefinitions="Auto"
+                      ColumnSpacing="10"
+                      RowSpacing="10">
+                  <StackPanel x:Name="StartDatePanel"
+                              Grid.Column="0">
+                    <TextBlock Classes="label"
+                               Text="시작일"/>
+                    <CalendarDatePicker Classes="date-input"
+                                        SelectedDate="{Binding EditorStartDate, Mode=TwoWay}"/>
+                    <Grid ColumnDefinitions="*,*"
+                          ColumnSpacing="8"
+                          Margin="0,8,0,0">
+                      <Button Grid.Column="0"
+                              Classes="fit"
+                              Content="오늘"
+                              Command="{Binding SetStartTodayCommand}"/>
+                      <Button Grid.Column="1"
+                              Classes="fit"
+                              Content="태초"
+                              Command="{Binding SetStartUnboundedCommand}"/>
+                    </Grid>
+                  </StackPanel>
+
+                  <StackPanel x:Name="DueDatePanel"
+                              Grid.Column="1">
+                    <TextBlock Classes="label"
+                               Text="마감일"/>
+                    <CalendarDatePicker Classes="date-input"
+                                        SelectedDate="{Binding EditorDueDate, Mode=TwoWay}"/>
+                    <Grid ColumnDefinitions="*,*"
+                          ColumnSpacing="8"
+                          Margin="0,8,0,0">
+                      <Button Grid.Column="0"
+                              Classes="fit"
+                              Content="오늘"
+                              Command="{Binding SetDueTodayCommand}"/>
+                      <Button Grid.Column="1"
+                              Classes="fit"
+                              Content="영구"
+                              Command="{Binding SetDueUnboundedCommand}"/>
+                    </Grid>
+                  </StackPanel>
+
+                  <StackPanel x:Name="ActualEndDatePanel"
+                              Grid.Column="2">
+                    <TextBlock Classes="label"
+                               Text="실제 종료일"/>
+                    <CalendarDatePicker Classes="date-input"
+                                        SelectedDate="{Binding EditorActualEndDate, Mode=TwoWay}"/>
+                    <Grid ColumnDefinitions="*,*"
+                          ColumnSpacing="8"
+                          Margin="0,8,0,0">
+                      <Button Grid.Column="0"
+                              Classes="fit"
+                              Content="오늘"
+                              Command="{Binding SetActualEndTodayCommand}"/>
+                      <Button Grid.Column="1"
+                              Classes="fit"
+                              Content="미완료"
+                              Command="{Binding ClearActualEndCommand}"/>
+                    </Grid>
+                  </StackPanel>
+                </Grid>
+
+                <StackPanel>
+                  <TextBlock Classes="label"
+                             Text="과업내용"/>
+                  <TextBox Classes="editor"
+                           Text="{Binding EditorContent}"
+                           Watermark="과업의 목적, 범위, 기준, 산출물을 적으세요."/>
+                </StackPanel>
+
+                <StackPanel>
+                  <TextBlock Classes="label"
+                             Text="선택 일자의 수행내용"/>
+                  <TextBox Classes="editor"
+                           Text="{Binding EditorPerformedContent}"
+                           Watermark="선택한 날짜에 실제 수행한 내용을 적으세요."/>
+                </StackPanel>
+
+                <StackPanel>
+                  <TextBlock Classes="label"
+                             Text="선택 일자의 회고"/>
+                  <TextBox Classes="editor"
+                           Text="{Binding EditorDailyRetrospective}"
+                           Watermark="선택한 날짜의 잘 된 점, 막힌 점, 다음 액션을 적으세요."/>
+                </StackPanel>
+              </StackPanel>
+            </ScrollViewer>
+          </DockPanel>
+        </Border>
+      </Grid>
+    </Grid>
+  </Grid>
 </UserControl>
