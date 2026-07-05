@@ -20,6 +20,19 @@ public sealed class WorkLogApiClient : IDisposable
         _httpClient = new HttpClient { BaseAddress = new Uri(NormalizeBaseUrl(baseUrl)) };
     }
 
+    public async Task CheckConnectionAsync(CancellationToken cancellationToken)
+    {
+        using HttpResponseMessage response = await _httpClient.GetAsync("/health", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
+        {
+            return;
+        }
+
+        await EnsureSuccessAsync(response, cancellationToken);
+        throw new HttpRequestException(
+            $"The backend health check returned {(int)response.StatusCode} {response.ReasonPhrase}; expected 204 No Content.");
+    }
+
     public async Task<IReadOnlyList<TaskDto>> GetTasksAsync(DateTime targetDate, CancellationToken cancellationToken)
     {
         string dateValue = Uri.EscapeDataString(targetDate.ToString("yyyy-MM-dd"));

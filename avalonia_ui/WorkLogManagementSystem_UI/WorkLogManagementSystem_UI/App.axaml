@@ -84,6 +84,20 @@
                              Value="Black" />
                  </Style>
 
+                 <Style Selector="RadioButton">
+                     <Setter Property="FontFamily"
+                             Value="{StaticResource AppFontFamily}" />
+                     <Setter Property="FontWeight"
+                             Value="Black" />
+                 </Style>
+
+                 <Style Selector="CheckBox">
+                     <Setter Property="FontFamily"
+                             Value="{StaticResource AppFontFamily}" />
+                     <Setter Property="FontWeight"
+                             Value="Black" />
+                 </Style>
+
                  <Style Selector="TextBox">
                      <Setter Property="FontFamily"
                              Value="{StaticResource AppFontFamily}" />
@@ -99,4 +113,3 @@
                  </Style>
              </Application.Styles>
 </Application>
-

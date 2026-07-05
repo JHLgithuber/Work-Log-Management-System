@@ -10,13 +10,14 @@ namespace WorkLogManagementSystem_UI.Views;
 
 public partial class MainView : UserControl
 {
-    private const double NarrowWidthThreshold = 760;
+    private const double NarrowWidthThreshold = 660;
     private const double CompactWidthThreshold = 420;
-    private const double CompactToolbarThreshold = 660;
     private const double ThreeColumnDateThreshold = 720;
     private const double TwoColumnDateThreshold = 390;
     private const double MinimumTaskPaneWidth = 220;
     private const double PreferredTaskPaneWidth = 320;
+    private const double PreferredSettingsModalWidth = 560;
+    private const double ModalViewportPadding = 24;
     private const int TaskPaneAnimationDurationMilliseconds = 180;
     private bool _isNarrowLayout;
     private bool _isTaskPaneOpen = true;
@@ -42,6 +43,8 @@ public partial class MainView : UserControl
         {
             return;
         }
+
+        UpdateModalWidths(width);
 
         bool shouldUseNarrowLayout = width < NarrowWidthThreshold;
         if (shouldUseNarrowLayout != _isNarrowLayout)
@@ -73,6 +76,7 @@ public partial class MainView : UserControl
             EditorPanel.Margin = new Avalonia.Thickness(shellMargin);
             TaskPaneToggleButton.IsVisible = true;
             TaskPaneCloseButton.IsVisible = true;
+            TaskPaneActionStrip.IsVisible = true;
             ApplyCompactToolbar(width);
             ApplyCompactEditor(width - (shellMargin * 2) - 32);
         }
@@ -98,6 +102,7 @@ public partial class MainView : UserControl
             EditorPanel.Margin = new Avalonia.Thickness(0);
             TaskPaneToggleButton.IsVisible = false;
             TaskPaneCloseButton.IsVisible = false;
+            TaskPaneActionStrip.IsVisible = false;
             ApplyRegularToolbar();
             TaskListDatePicker.MinWidth = 170;
             ApplyEditorDateLayout(editorContentWidth);
@@ -106,12 +111,14 @@ public partial class MainView : UserControl
 
     private void ApplyRegularToolbar()
     {
+        MoveTopBarActionsToTopBar();
         TopBarShell.ColumnDefinitions = new ColumnDefinitions("*,Auto");
         TopBarShell.RowDefinitions = new RowDefinitions("Auto");
         Grid.SetColumn(TopBarInfoGroup, 0);
         Grid.SetRow(TopBarInfoGroup, 0);
         Grid.SetColumn(TopBarActionGroup, 1);
         Grid.SetRow(TopBarActionGroup, 0);
+        TopBarActionGroup.IsVisible = true;
         TopBarActionGroup.Margin = new Avalonia.Thickness(0);
         TopBar.Padding = new Avalonia.Thickness(10, 8);
         AppTitleText.FontSize = 22;
@@ -120,25 +127,60 @@ public partial class MainView : UserControl
 
     private void ApplyCompactToolbar(double width)
     {
+        MoveTopBarActionsToTaskPane();
         bool phoneWidth = width < CompactWidthThreshold;
-        bool stackedToolbar = width < CompactToolbarThreshold;
-        TopBarShell.ColumnDefinitions = stackedToolbar ? new ColumnDefinitions("*") : new ColumnDefinitions("*,Auto");
-        TopBarShell.RowDefinitions = stackedToolbar ? new RowDefinitions("Auto,Auto") : new RowDefinitions("Auto");
+        TopBarShell.ColumnDefinitions = new ColumnDefinitions("*");
+        TopBarShell.RowDefinitions = new RowDefinitions("Auto");
         Grid.SetColumn(TopBarInfoGroup, 0);
         Grid.SetRow(TopBarInfoGroup, 0);
-        Grid.SetColumn(TopBarActionGroup, stackedToolbar ? 0 : 1);
-        Grid.SetRow(TopBarActionGroup, stackedToolbar ? 1 : 0);
-        TopBarActionGroup.Margin = stackedToolbar ? new Avalonia.Thickness(0, 8, 0, 0) : new Avalonia.Thickness(0);
+        TopBarActionGroup.Margin = new Avalonia.Thickness(0);
 
         TopBar.Padding = phoneWidth ? new Avalonia.Thickness(8, 6) : new Avalonia.Thickness(10, 8);
         AppTitleText.FontSize = phoneWidth ? 18 : 20;
         CurrentScopeText.IsVisible = !phoneWidth;
     }
 
+    private void MoveTopBarActionsToTopBar()
+    {
+        if (TaskPaneActionHost.Content == TopBarActionGroup)
+        {
+            TaskPaneActionHost.Content = null;
+        }
+
+        if (!TopBarShell.Children.Contains(TopBarActionGroup))
+        {
+            TopBarShell.Children.Add(TopBarActionGroup);
+        }
+
+        Grid.SetColumn(TopBarActionGroup, 1);
+        Grid.SetRow(TopBarActionGroup, 0);
+        TopBarActionGroup.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right;
+        TopBarActionGroup.IsVisible = true;
+    }
+
+    private void MoveTopBarActionsToTaskPane()
+    {
+        if (TaskPaneActionHost.Content == TopBarActionGroup)
+        {
+            TopBarActionGroup.IsVisible = true;
+            return;
+        }
+
+        TopBarShell.Children.Remove(TopBarActionGroup);
+        TopBarActionGroup.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right;
+        TopBarActionGroup.IsVisible = true;
+        TaskPaneActionHost.Content = TopBarActionGroup;
+    }
+
     private void ApplyCompactEditor(double editorContentWidth)
     {
         TaskListDatePicker.MinWidth = 170;
         ApplyEditorDateLayout(editorContentWidth);
+    }
+
+    private void UpdateModalWidths(double width)
+    {
+        SettingsModalCard.Width = Math.Min(PreferredSettingsModalWidth, Math.Max(0, width - ModalViewportPadding));
     }
 
     private void ApplyEditorDateLayout(double editorContentWidth)
@@ -220,6 +262,11 @@ public partial class MainView : UserControl
     }
 
     private async void OnTaskPaneOverlayPressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        await CloseTaskPaneAsync();
+    }
+
+    private async void OnTaskPaneMenuActionClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs eventArgs)
     {
         await CloseTaskPaneAsync();
     }

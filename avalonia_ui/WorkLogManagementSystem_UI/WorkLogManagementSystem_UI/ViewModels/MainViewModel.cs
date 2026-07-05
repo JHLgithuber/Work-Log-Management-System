@@ -35,9 +35,22 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private DateTime? _editorStartDate = DateTime.Today;
     [ObservableProperty] private DateTime? _editorDueDate = DateTime.Today;
     [ObservableProperty] private DateTime? _editorActualEndDate;
+    [ObservableProperty] private bool _isSettingsDialogOpen;
+    [ObservableProperty] private string _settingsApiBaseUrl = string.Empty;
+    [ObservableProperty] private bool _settingsUseSystemTheme = true;
+    [ObservableProperty] private bool _settingsUseLightTheme;
+    [ObservableProperty] private bool _settingsUseDarkTheme;
+    [ObservableProperty] private string _settingsErrorMessage = string.Empty;
+    [ObservableProperty] private bool _isConnectionErrorDialogOpen;
+    [ObservableProperty] private string _connectionErrorMessage = string.Empty;
+    [ObservableProperty] private bool _isExportRangeDialogOpen;
+    [ObservableProperty] private DateTime? _exportStartDate = DateTime.Today;
+    [ObservableProperty] private DateTime? _exportEndDate = DateTime.Today;
+    [ObservableProperty] private string _exportRangeErrorMessage = string.Empty;
 
     public MainViewModel()
     {
+        LoadPersistedSettings();
         _ = LoadTasksAsync();
     }
 
@@ -64,6 +77,8 @@ public partial class MainViewModel : ViewModelBase
     public string EditorParentTitleLabel => $"상위 과업: {EditorParentTitle}";
     public bool HasEditorParentTitle => !string.IsNullOrWhiteSpace(EditorParentTitle);
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
+    public bool HasSettingsErrorMessage => !string.IsNullOrWhiteSpace(SettingsErrorMessage);
+    public bool HasExportRangeErrorMessage => !string.IsNullOrWhiteSpace(ExportRangeErrorMessage);
     public bool CanEditExistingTask => IsEditorEnabled && !IsNewTask && SelectedTask is not null;
 
     partial void OnSelectedDateChanged(DateTime? value)
@@ -109,6 +124,16 @@ public partial class MainViewModel : ViewModelBase
     partial void OnStatusMessageChanged(string value)
     {
         OnPropertyChanged(nameof(HasStatusMessage));
+    }
+
+    partial void OnSettingsErrorMessageChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasSettingsErrorMessage));
+    }
+
+    partial void OnExportRangeErrorMessageChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasExportRangeErrorMessage));
     }
 
     [RelayCommand]
@@ -289,23 +314,59 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task OpenSettingsAsync()
+    private void OpenSettings()
     {
+        SettingsApiBaseUrl = ApiBaseUrl;
+        SettingsErrorMessage = string.Empty;
+        SetSettingsThemeMode(ThemeMode);
+        IsSettingsDialogOpen = true;
+    }
+
+    [RelayCommand]
+    private void CancelSettings()
+    {
+        IsSettingsDialogOpen = false;
+        SettingsErrorMessage = string.Empty;
+    }
+
+    [RelayCommand]
+    private void DismissConnectionError()
+    {
+        IsConnectionErrorDialogOpen = false;
+        ConnectionErrorMessage = string.Empty;
+    }
+
+    [RelayCommand]
+    private async Task SaveSettingsAsync()
+    {
+        string apiBaseUrl = (SettingsApiBaseUrl ?? string.Empty).Trim().TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(apiBaseUrl))
+        {
+            SettingsErrorMessage = "API 주소를 입력하세요.";
+            return;
+        }
+
+        if (!Uri.TryCreate(apiBaseUrl, UriKind.Absolute, out Uri? uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            SettingsErrorMessage = "http:// 또는 https:// 주소를 입력하세요.";
+            return;
+        }
+
         try
         {
-            AppSettingsResult? settings = await _settingsService.ConfigureSettingsAsync(
-                ApiBaseUrl,
-                ThemeMode,
-                CancellationToken.None);
-            if (settings is null)
-            {
-                return;
-            }
+            using WorkLogApiClient client = new(apiBaseUrl);
+            await client.CheckConnectionAsync(CancellationToken.None);
 
-            bool apiBaseUrlChanged = ApiBaseUrl != settings.ApiBaseUrl;
-            ApiBaseUrl = settings.ApiBaseUrl;
-            ThemeMode = settings.ThemeMode;
+            bool apiBaseUrlChanged = ApiBaseUrl != apiBaseUrl;
+            ApiBaseUrl = apiBaseUrl;
+            ThemeMode = ResolveSettingsThemeMode();
+            await _settingsService.SaveSettingsAsync(
+                new AppSettingsResult(ApiBaseUrl, ThemeMode),
+                CancellationToken.None);
             _settingsService.ApplyThemeMode(ThemeMode);
+            IsSettingsDialogOpen = false;
+            SettingsErrorMessage = string.Empty;
             StatusMessage = "설정 저장됨.";
 
             if (apiBaseUrlChanged)
@@ -315,34 +376,61 @@ public partial class MainViewModel : ViewModelBase
         }
         catch (Exception error)
         {
-            StatusMessage = $"설정 실패: {error.Message}";
+            ConnectionErrorMessage = $"백엔드 연결 확인에 실패했습니다.\n{error.Message}";
+            IsConnectionErrorDialogOpen = true;
+            SettingsErrorMessage = "연결 확인에 실패했습니다.";
+            StatusMessage = "설정 저장 실패.";
         }
     }
 
     [RelayCommand]
     private async Task ExportExcelAsync()
     {
+        DateTime defaultDate = SelectedDate ?? DateTime.Today;
+        DateTime defaultStartDate = new(defaultDate.Year, defaultDate.Month, 1);
+        DateTime defaultEndDate = new(
+            defaultDate.Year,
+            defaultDate.Month,
+            DateTime.DaysInMonth(defaultDate.Year, defaultDate.Month));
+        ExportStartDate = defaultStartDate;
+        ExportEndDate = defaultEndDate;
+        ExportRangeErrorMessage = string.Empty;
+        IsExportRangeDialogOpen = true;
+        await Task.CompletedTask;
+    }
+
+    [RelayCommand]
+    private void CancelExportRange()
+    {
+        IsExportRangeDialogOpen = false;
+        ExportRangeErrorMessage = string.Empty;
+        StatusMessage = "엑셀 내보내기를 취소했습니다.";
+    }
+
+    [RelayCommand]
+    private async Task ConfirmExportExcelAsync()
+    {
+        DateTime? startDate = ExportStartDate?.Date;
+        DateTime? endDate = ExportEndDate?.Date;
+        if (startDate is null || endDate is null)
+        {
+            ExportRangeErrorMessage = "시작일과 종료일을 모두 선택하세요.";
+            return;
+        }
+
+        if (startDate > endDate)
+        {
+            ExportRangeErrorMessage = "시작일은 종료일보다 늦을 수 없습니다.";
+            return;
+        }
+
         try
         {
-            DateTime defaultDate = SelectedDate ?? DateTime.Today;
-            DateTime defaultStartDate = new(defaultDate.Year, defaultDate.Month, 1);
-            DateTime defaultEndDate = new(
-                defaultDate.Year,
-                defaultDate.Month,
-                DateTime.DaysInMonth(defaultDate.Year, defaultDate.Month));
-            ExportDateRange? range = await _exportFileService.SelectExportRangeAsync(
-                defaultStartDate,
-                defaultEndDate,
-                CancellationToken.None);
-            if (range is null)
-            {
-                StatusMessage = "엑셀 내보내기를 취소했습니다.";
-                return;
-            }
-
+            IsExportRangeDialogOpen = false;
+            ExportRangeErrorMessage = string.Empty;
             using WorkLogApiClient client = new(ApiBaseUrl);
-            byte[] content = await client.ExportExcelAsync(range.StartDate, range.EndDate, CancellationToken.None);
-            string fileName = $"{range.StartDate:yyyy-MM-dd} - {range.EndDate:yyyy-MM-dd} 업무일지.xlsx";
+            byte[] content = await client.ExportExcelAsync(startDate.Value, endDate.Value, CancellationToken.None);
+            string fileName = $"{startDate:yyyy-MM-dd} - {endDate:yyyy-MM-dd} 업무일지.xlsx";
             string? path = await _exportFileService.SaveExcelAsync(content, fileName, CancellationToken.None);
             StatusMessage = path is null ? "엑셀 저장을 취소했습니다." : string.Empty;
         }
@@ -350,6 +438,46 @@ public partial class MainViewModel : ViewModelBase
         {
             StatusMessage = $"엑셀 내보내기 실패: {error.Message}";
         }
+    }
+
+    private void SetSettingsThemeMode(string themeMode)
+    {
+        SettingsUseSystemTheme = themeMode == AppThemeMode.System;
+        SettingsUseLightTheme = themeMode == AppThemeMode.Light;
+        SettingsUseDarkTheme = themeMode == AppThemeMode.Dark;
+
+        if (!SettingsUseSystemTheme && !SettingsUseLightTheme && !SettingsUseDarkTheme)
+        {
+            SettingsUseSystemTheme = true;
+        }
+    }
+
+    private string ResolveSettingsThemeMode()
+    {
+        if (SettingsUseLightTheme)
+        {
+            return AppThemeMode.Light;
+        }
+
+        if (SettingsUseDarkTheme)
+        {
+            return AppThemeMode.Dark;
+        }
+
+        return AppThemeMode.System;
+    }
+
+    private void LoadPersistedSettings()
+    {
+        AppSettingsResult? settings = _settingsService.LoadSettings();
+        if (settings is null)
+        {
+            return;
+        }
+
+        ApiBaseUrl = settings.ApiBaseUrl;
+        ThemeMode = settings.ThemeMode;
+        _settingsService.ApplyThemeMode(ThemeMode);
     }
 
     private void BeginNewTask(int? parentId, string parentTitle)

@@ -1,8 +1,15 @@
 from __future__ import annotations
 
-import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Final
+
+from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.domain import Base
 
 
 class Database:
@@ -10,43 +17,25 @@ class Database:
 
     def __init__(self, database_path: Path | None = None) -> None:
         self._database_path: Path = database_path or self._DEFAULT_PATH
+        self._engine: Engine = create_engine(
+            f"sqlite:///{self._database_path}",
+            connect_args={"check_same_thread": False},
+        )
+        self._session_factory: sessionmaker[Session] = sessionmaker(
+            bind=self._engine,
+            expire_on_commit=False,
+        )
+        event.listen(self._engine, "connect", self._enable_foreign_keys)
 
-    def connect(self) -> sqlite3.Connection:
-        connection: sqlite3.Connection = sqlite3.connect(self._database_path)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        return connection
+    @contextmanager
+    def session(self) -> Iterator[Session]:
+        with self._session_factory() as session:
+            yield session
 
     def initialize(self) -> None:
-        with self.connect() as connection:
-            connection.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS tasks (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    parent_id INTEGER NULL REFERENCES tasks(id) ON DELETE CASCADE,
-                    title TEXT NOT NULL,
-                    content TEXT NOT NULL DEFAULT '',
-                    start_at TEXT NOT NULL,
-                    due_at TEXT NOT NULL,
-                    actual_end_at TEXT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
+        Base.metadata.create_all(self._engine)
 
-                CREATE TABLE IF NOT EXISTS work_entries (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-                    entry_date TEXT NOT NULL,
-                    performed_content TEXT NOT NULL DEFAULT '',
-                    retrospective TEXT NOT NULL DEFAULT '',
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    UNIQUE(task_id, entry_date)
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks(parent_id);
-                CREATE INDEX IF NOT EXISTS idx_tasks_date_range ON tasks(start_at, due_at, actual_end_at);
-                CREATE INDEX IF NOT EXISTS idx_work_entries_task_id ON work_entries(task_id);
-                CREATE INDEX IF NOT EXISTS idx_work_entries_entry_date ON work_entries(entry_date);
-                """
-            )
+    def _enable_foreign_keys(self, dbapi_connection: object, connection_record: object) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys = ON")
+        cursor.close()

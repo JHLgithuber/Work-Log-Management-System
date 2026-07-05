@@ -1,5 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="WorkLogMgmtSys Backend" type="Python.FastAPI">
+    <option name="additionalOptions" value="--host 0.0.0.0 --reload" />
     <option name="file" value="$PROJECT_DIR$/fastapi_backend/main.py" />
     <module name="fastapiproject" />
     <option name="ENV_FILES" value="" />

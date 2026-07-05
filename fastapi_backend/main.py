@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Database
@@ -25,6 +25,6 @@ def initialize_application() -> None:
 app.include_router(TaskRouter(database).router)
 
 
-@app.get("/health")
-def health_check() -> dict[str, str]:
-    return {"status": "ok"}
+@app.get("/health", status_code=status.HTTP_204_NO_CONTENT)
+def health_check() -> Response:
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

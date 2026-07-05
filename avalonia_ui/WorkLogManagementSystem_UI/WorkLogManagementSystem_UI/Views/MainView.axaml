@@ -116,6 +116,20 @@
       <Setter Property="SelectedDateFormat" Value="Custom"/>
       <Setter Property="CustomDateFormatString" Value="yyyy-MM-dd"/>
     </Style>
+    <Style Selector="Border.modal-card">
+      <Setter Property="Background" Value="{DynamicResource AppPageBackgroundBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppPanelBorderBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="20"/>
+      <Setter Property="MaxWidth" Value="460"/>
+      <Setter Property="HorizontalAlignment" Value="Center"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Border.modal-scrim">
+      <Setter Property="Background" Value="#99000000"/>
+      <Setter Property="Padding" Value="12"/>
+    </Style>
   </UserControl.Styles>
 
   <Grid Background="{DynamicResource AppPageBackgroundBrush}" RowDefinitions="Auto,*">
@@ -164,7 +178,8 @@
           <Button x:Name="SettingsButton"
                   Classes="icon-toolbar topbar-action"
                   Command="{Binding OpenSettingsCommand}"
-                  ToolTip.Tip="설정">
+                  ToolTip.Tip="설정"
+                  Click="OnTaskPaneMenuActionClicked">
             <PathIcon Width="18"
                       Height="18"
                       Data="M19.43 12.98C19.47 12.66 19.5 12.34 19.5 12C19.5 11.66 19.47 11.33 19.42 11.02L21.54 9.37C21.73 9.22 21.78 8.95 21.66 8.73L19.66 5.27C19.54 5.05 19.29 4.96 19.06 5.05L16.56 6.06C16.04 5.66 15.5 5.32 14.88 5.07L14.5 2.42C14.47 2.18 14.25 2 14 2H10C9.75 2 9.54 2.18 9.5 2.42L9.12 5.07C8.5 5.32 7.96 5.66 7.44 6.06L4.94 5.05C4.71 4.96 4.46 5.05 4.34 5.27L2.34 8.73C2.21 8.95 2.27 9.22 2.46 9.37L4.58 11.02C4.53 11.33 4.5 11.67 4.5 12C4.5 12.33 4.53 12.66 4.58 12.98L2.46 14.63C2.27 14.78 2.22 15.05 2.34 15.27L4.34 18.73C4.46 18.95 4.71 19.04 4.94 18.95L7.44 17.94C7.96 18.34 8.5 18.68 9.12 18.93L9.5 21.58C9.54 21.82 9.75 22 10 22H14C14.25 22 14.47 21.82 14.5 21.58L14.88 18.93C15.5 18.68 16.04 18.34 16.56 17.94L19.06 18.95C19.29 19.04 19.54 18.95 19.66 18.73L21.66 15.27C21.78 15.05 21.73 14.78 21.54 14.63L19.43 12.98ZM12 15.5C10.07 15.5 8.5 13.93 8.5 12C8.5 10.07 10.07 8.5 12 8.5C13.93 8.5 15.5 10.07 15.5 12C15.5 13.93 13.93 15.5 12 15.5Z"/>
@@ -172,7 +187,8 @@
           <Button x:Name="RefreshButton"
                   Classes="icon-toolbar topbar-action"
                   Command="{Binding LoadTasksCommand}"
-                  ToolTip.Tip="새로고침">
+                  ToolTip.Tip="새로고침"
+                  Click="OnTaskPaneMenuActionClicked">
             <PathIcon Width="18"
                       Height="18"
                       Data="M17.65 6.35C16.2 4.9 14.21 4 12 4C7.58 4 4.01 7.58 4.01 12C4.01 16.42 7.58 20 12 20C15.73 20 18.84 17.45 19.73 14H17.65C16.83 16.33 14.61 18 12 18C8.69 18 6 15.31 6 12C6 8.69 8.69 6 12 6C13.66 6 15.14 6.69 16.22 7.78L13 11H20V4L17.65 6.35Z"/>
@@ -180,7 +196,8 @@
           <Button x:Name="ExportButton"
                   Classes="icon-toolbar-accent topbar-action-accent"
                   Command="{Binding ExportExcelCommand}"
-                  ToolTip.Tip="엑셀 내보내기">
+                  ToolTip.Tip="엑셀 내보내기"
+                  Click="OnTaskPaneMenuActionClicked">
             <PathIcon Width="18"
                       Height="18"
                       Data="M5 20H19V18H5V20ZM19 9H15V3H9V9H5L12 16L19 9Z"/>
@@ -267,13 +284,24 @@
 
             </StackPanel>
 
+            <Border x:Name="TaskPaneActionStrip"
+                    DockPanel.Dock="Bottom"
+                    Background="{DynamicResource AppTopBarBrush}"
+                    CornerRadius="8"
+                    Padding="10,8"
+                    Margin="0,14,0,0"
+                    IsVisible="False">
+              <ContentControl x:Name="TaskPaneActionHost"
+                              HorizontalAlignment="Right"/>
+            </Border>
+
             <TreeView Margin="0,18,0,0"
                       ItemsSource="{Binding Tasks}"
                       SelectedItem="{Binding SelectedTask, Mode=TwoWay}">
               <TreeView.DataTemplates>
                 <TreeDataTemplate DataType="models:TaskDto"
                                   ItemsSource="{Binding Children}">
-                  <Grid ColumnDefinitions="*,Auto"
+                  <Grid ColumnDefinitions="*"
                         MinHeight="46"
                         Margin="0,4">
                     <StackPanel Grid.Column="0">
@@ -285,11 +313,6 @@
                                  FontSize="12"
                                  Foreground="{DynamicResource AppTextSecondaryBrush}"/>
                     </StackPanel>
-                    <TextBlock Grid.Column="1"
-                               Text="{Binding Id}"
-                               Foreground="{DynamicResource AppTextMutedBrush}"
-                               Margin="12,0,0,0"
-                               VerticalAlignment="Center"/>
                   </Grid>
                 </TreeDataTemplate>
               </TreeView.DataTemplates>
@@ -435,5 +458,137 @@
         </Border>
       </Grid>
     </Grid>
+
+    <Border Grid.RowSpan="2"
+            Classes="modal-scrim"
+            ZIndex="20"
+            IsVisible="{Binding IsSettingsDialogOpen}">
+      <Border x:Name="SettingsModalCard"
+              Classes="modal-card">
+        <StackPanel Spacing="16">
+          <TextBlock Text="설정"
+                     FontSize="20"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource AppTextPrimaryBrush}"/>
+
+          <StackPanel>
+            <TextBlock Classes="label"
+                       Text="API 주소"/>
+            <TextBox Text="{Binding SettingsApiBaseUrl, Mode=TwoWay}"
+                     Watermark="http://localhost:8000"/>
+          </StackPanel>
+
+          <StackPanel>
+            <TextBlock Classes="label"
+                       Text="테마"/>
+            <StackPanel Orientation="Horizontal"
+                        Spacing="12">
+              <RadioButton GroupName="MainSettingsThemeMode"
+                           Content="시스템"
+                           IsChecked="{Binding SettingsUseSystemTheme, Mode=TwoWay}"/>
+              <RadioButton GroupName="MainSettingsThemeMode"
+                           Content="라이트"
+                           IsChecked="{Binding SettingsUseLightTheme, Mode=TwoWay}"/>
+              <RadioButton GroupName="MainSettingsThemeMode"
+                           Content="다크"
+                           IsChecked="{Binding SettingsUseDarkTheme, Mode=TwoWay}"/>
+            </StackPanel>
+          </StackPanel>
+
+          <TextBlock Text="{Binding SettingsErrorMessage}"
+                     Foreground="{DynamicResource AppErrorBrush}"
+                     TextWrapping="Wrap"
+                     IsVisible="{Binding HasSettingsErrorMessage}"/>
+
+          <StackPanel Orientation="Horizontal"
+                      HorizontalAlignment="Right"
+                      Spacing="8">
+            <Button Content="취소"
+                    Command="{Binding CancelSettingsCommand}"/>
+            <Button Classes="primary"
+                    Content="저장"
+                    Command="{Binding SaveSettingsCommand}"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
+
+    <Border Grid.RowSpan="2"
+            Classes="modal-scrim"
+            ZIndex="21"
+            IsVisible="{Binding IsExportRangeDialogOpen}">
+      <Border Classes="modal-card">
+        <StackPanel Spacing="16">
+          <TextBlock Text="엑셀 내보내기"
+                     FontSize="20"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource AppTextPrimaryBrush}"/>
+
+          <StackPanel Spacing="10">
+            <StackPanel>
+              <TextBlock Classes="label"
+                         Text="시작일"/>
+              <CalendarDatePicker Classes="date-input"
+                                  SelectedDate="{Binding ExportStartDate, Mode=TwoWay}"/>
+            </StackPanel>
+
+            <StackPanel>
+              <TextBlock Classes="label"
+                         Text="종료일"/>
+              <CalendarDatePicker Classes="date-input"
+                                  SelectedDate="{Binding ExportEndDate, Mode=TwoWay}"/>
+            </StackPanel>
+          </StackPanel>
+
+          <TextBlock Text="{Binding ExportRangeErrorMessage}"
+                     Foreground="{DynamicResource AppErrorBrush}"
+                     TextWrapping="Wrap"
+                     IsVisible="{Binding HasExportRangeErrorMessage}"/>
+
+          <StackPanel Orientation="Horizontal"
+                      HorizontalAlignment="Right"
+                      Spacing="8">
+            <Button Content="취소"
+                    Command="{Binding CancelExportRangeCommand}"/>
+            <Button Classes="primary"
+                    Content="내보내기"
+                    Command="{Binding ConfirmExportExcelCommand}"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
+
+    <Border Grid.RowSpan="2"
+            Classes="modal-scrim"
+            ZIndex="22"
+            IsVisible="{Binding IsConnectionErrorDialogOpen}">
+      <Border Classes="modal-card"
+              MaxWidth="520"
+              MaxHeight="420">
+        <Grid RowDefinitions="Auto,*,Auto"
+              RowSpacing="16">
+          <TextBlock Text="연결 실패"
+                     Grid.Row="0"
+                     FontSize="20"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource AppTextPrimaryBrush}"/>
+          <ScrollViewer Grid.Row="1"
+                        MaxHeight="260"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+            <TextBlock Text="{Binding ConnectionErrorMessage}"
+                       Foreground="{DynamicResource AppTextSecondaryBrush}"
+                       TextWrapping="Wrap"/>
+          </ScrollViewer>
+          <StackPanel Orientation="Horizontal"
+                      Grid.Row="2"
+                      HorizontalAlignment="Right">
+            <Button Classes="primary"
+                    Content="확인"
+                    Command="{Binding DismissConnectionErrorCommand}"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+    </Border>
   </Grid>
 </UserControl>

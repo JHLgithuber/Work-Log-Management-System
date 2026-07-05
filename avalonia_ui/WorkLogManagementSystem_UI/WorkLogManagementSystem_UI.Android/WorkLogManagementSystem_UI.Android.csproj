@@ -2,6 +2,7 @@
     <PropertyGroup>
         <OutputType>Exe</OutputType>
         <TargetFramework>net9.0-android</TargetFramework>
+        <RuntimeIdentifiers>android-arm64;android-x64</RuntimeIdentifiers>
         <SupportedOSPlatformVersion>21</SupportedOSPlatformVersion>
         <Nullable>enable</Nullable>
         <ApplicationId>com.companyname.worklogmanagementsystemui</ApplicationId>
@@ -9,6 +10,12 @@
         <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
         <AndroidPackageFormat>apk</AndroidPackageFormat>
         <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+        <AndroidSdkDirectory Condition="'$(AndroidSdkDirectory)' == '' and Exists('$(HOME)/Android/Sdk')">$(HOME)/Android/Sdk</AndroidSdkDirectory>
+        <_WorkLogApkOutputDirectory Condition="'$(RuntimeIdentifier)' == ''">$(MSBuildProjectDirectory)/bin/$(Configuration)/$(TargetFramework)</_WorkLogApkOutputDirectory>
+        <_WorkLogApkOutputDirectory Condition="'$(RuntimeIdentifier)' != ''">$(MSBuildProjectDirectory)/bin/$(Configuration)/$(TargetFramework)/$(RuntimeIdentifier)</_WorkLogApkOutputDirectory>
+        <ApkFile Condition="'$(ApkFile)' == ''">$(_WorkLogApkOutputDirectory)/$(ApplicationId).apk</ApkFile>
+        <ApkFileSigned Condition="'$(ApkFileSigned)' == ''">$(_WorkLogApkOutputDirectory)/$(ApplicationId)-Signed.apk</ApkFileSigned>
+        <AndroidApkPath Condition="'$(AndroidApkPath)' == ''">$(ApkFileSigned)</AndroidApkPath>
     </PropertyGroup>
 
     <ItemGroup>
@@ -19,6 +26,8 @@
 
     <ItemGroup>
         <PackageReference Include="Avalonia.Android"/>
+        <PackageReference Include="SkiaSharp"/>
+        <PackageReference Include="SkiaSharp.NativeAssets.Android"/>
         <PackageReference Include="Xamarin.AndroidX.Core.SplashScreen"/>
     </ItemGroup>
 
