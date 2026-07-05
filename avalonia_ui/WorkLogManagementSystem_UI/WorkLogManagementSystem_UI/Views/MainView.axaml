@@ -82,22 +82,25 @@
       <Setter Property="MinWidth" Value="0"/>
       <Setter Property="Padding" Value="8,7"/>
     </Style>
-    <Style Selector="Button.topbar-action:pointerover">
+    <Style Selector="Button.topbar-action:pointerover /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource AppTopActionHoverBackgroundBrush}"/>
       <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource AppTopActionHoverBorderBrush}"/>
     </Style>
-    <Style Selector="Button.topbar-action:pressed">
+
+    <Style Selector="Button.topbar-action:pressed /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource AppTopActionPressedBackgroundBrush}"/>
       <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource AppTopActionHoverBorderBrush}"/>
     </Style>
-    <Style Selector="Button.topbar-action-accent:pointerover">
+
+    <Style Selector="Button.topbar-action-accent:pointerover /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource AppAccentHoverBrush}"/>
       <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource AppTopActionAccentHoverBorderBrush}"/>
     </Style>
-    <Style Selector="Button.topbar-action-accent:pressed">
+
+    <Style Selector="Button.topbar-action-accent:pressed /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource AppAccentPressedBrush}"/>
       <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource AppTopActionAccentHoverBorderBrush}"/>
@@ -139,7 +142,7 @@
                       Data="M4 6H20V8H4V6ZM4 11H20V13H4V11ZM4 16H20V18H4V16Z"/>
           </Button>
           <TextBlock x:Name="AppTitleText"
-                     Text="Work Log"
+                     Text="업무일지 관리체계"
                      Foreground="{DynamicResource AppTopBarTextBrush}"
                      FontSize="22"
                      FontWeight="SemiBold"
@@ -159,9 +162,13 @@
                     HorizontalAlignment="Right"
                     VerticalAlignment="Center">
           <Button x:Name="SettingsButton"
-                  Classes="toolbar topbar-action"
-                  Content="설정"
-                  Command="{Binding OpenSettingsCommand}"/>
+                  Classes="icon-toolbar topbar-action"
+                  Command="{Binding OpenSettingsCommand}"
+                  ToolTip.Tip="설정">
+            <PathIcon Width="18"
+                      Height="18"
+                      Data="M19.43 12.98C19.47 12.66 19.5 12.34 19.5 12C19.5 11.66 19.47 11.33 19.42 11.02L21.54 9.37C21.73 9.22 21.78 8.95 21.66 8.73L19.66 5.27C19.54 5.05 19.29 4.96 19.06 5.05L16.56 6.06C16.04 5.66 15.5 5.32 14.88 5.07L14.5 2.42C14.47 2.18 14.25 2 14 2H10C9.75 2 9.54 2.18 9.5 2.42L9.12 5.07C8.5 5.32 7.96 5.66 7.44 6.06L4.94 5.05C4.71 4.96 4.46 5.05 4.34 5.27L2.34 8.73C2.21 8.95 2.27 9.22 2.46 9.37L4.58 11.02C4.53 11.33 4.5 11.67 4.5 12C4.5 12.33 4.53 12.66 4.58 12.98L2.46 14.63C2.27 14.78 2.22 15.05 2.34 15.27L4.34 18.73C4.46 18.95 4.71 19.04 4.94 18.95L7.44 17.94C7.96 18.34 8.5 18.68 9.12 18.93L9.5 21.58C9.54 21.82 9.75 22 10 22H14C14.25 22 14.47 21.82 14.5 21.58L14.88 18.93C15.5 18.68 16.04 18.34 16.56 17.94L19.06 18.95C19.29 19.04 19.54 18.95 19.66 18.73L21.66 15.27C21.78 15.05 21.73 14.78 21.54 14.63L19.43 12.98ZM12 15.5C10.07 15.5 8.5 13.93 8.5 12C8.5 10.07 10.07 8.5 12 8.5C13.93 8.5 15.5 10.07 15.5 12C15.5 13.93 13.93 15.5 12 15.5Z"/>
+          </Button>
           <Button x:Name="RefreshButton"
                   Classes="icon-toolbar topbar-action"
                   Command="{Binding LoadTasksCommand}"

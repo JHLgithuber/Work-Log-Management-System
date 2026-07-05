@@ -11,6 +11,9 @@
 
     <Application.Resources>
         <ResourceDictionary>
+            <FontFamily x:Key="AppFontFamily">
+                avares://WorkLogManagementSystem_UI/Assets/Fonts#Noto Sans KR
+            </FontFamily>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="AppPageBackgroundBrush" Color="#F4F7FA"/>
@@ -64,7 +67,36 @@
         </ResourceDictionary>
     </Application.Resources>
 
-    <Application.Styles>
-        <FluentTheme />
-    </Application.Styles>
+             <Application.Styles>
+                 <FluentTheme />
+
+                 <Style Selector="TextBlock">
+                     <Setter Property="FontFamily"
+                             Value="{StaticResource AppFontFamily}" />
+                     <Setter Property="FontWeight"
+                             Value="Black" />
+                 </Style>
+
+                 <Style Selector="Button">
+                     <Setter Property="FontFamily"
+                             Value="{StaticResource AppFontFamily}" />
+                     <Setter Property="FontWeight"
+                             Value="Black" />
+                 </Style>
+
+                 <Style Selector="TextBox">
+                     <Setter Property="FontFamily"
+                             Value="{StaticResource AppFontFamily}" />
+                     <Setter Property="FontWeight"
+                             Value="Black" />
+                 </Style>
+
+                 <Style Selector="CalendarDatePicker">
+                     <Setter Property="FontFamily"
+                             Value="{StaticResource AppFontFamily}" />
+                     <Setter Property="FontWeight"
+                             Value="Black" />
+                 </Style>
+             </Application.Styles>
 </Application>
+

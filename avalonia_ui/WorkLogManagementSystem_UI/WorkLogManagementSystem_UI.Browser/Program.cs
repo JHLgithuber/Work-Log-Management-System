@@ -4,6 +4,8 @@ using Avalonia;
 using Avalonia.Browser;
 using WorkLogManagementSystem_UI;
 
+[assembly: SupportedOSPlatform("browser")]
+
 internal sealed partial class Program
 {
     private static Task Main(string[] args) => BuildAvaloniaApp()
