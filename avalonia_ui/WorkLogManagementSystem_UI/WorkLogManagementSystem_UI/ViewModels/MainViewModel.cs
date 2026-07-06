@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia.Styling;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WorkLogManagementSystem_UI.Models;
@@ -16,10 +17,17 @@ public partial class MainViewModel : ViewModelBase
     private static readonly DateTime UnboundedEnd = DateTime.MaxValue;
     private readonly ExportFileService _exportFileService = new();
     private readonly AppSettingsService _settingsService = new();
+    private readonly ICredentialStore _credentialStore = PlatformCredentialStore.Create();
     private CancellationTokenSource? _loadCancellationTokenSource;
 
-    [ObservableProperty] private string _apiBaseUrl = "http://localhost:8000";
+    [ObservableProperty] private string _apiBaseUrl = AppDefaultsService.Load().ApiBaseUrl;
+    [ObservableProperty] private string _accessToken = string.Empty;
+    [ObservableProperty] private string _currentUsername = string.Empty;
+    [ObservableProperty] private string _loginUsername = string.Empty;
+    [ObservableProperty] private string _loginPassword = string.Empty;
+    [ObservableProperty] private bool _rememberCredentials;
     [ObservableProperty] private string _themeMode = AppThemeMode.System;
+    [ObservableProperty] private ThemeVariant _activeThemeVariant = ThemeVariant.Default;
     [ObservableProperty] private DateTime? _selectedDate = DateTime.Today;
     [ObservableProperty] private ObservableCollection<TaskDto> _tasks = new();
     [ObservableProperty] private TaskDto? _selectedTask;
@@ -30,6 +38,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string _editorContent = string.Empty;
     [ObservableProperty] private string _editorPerformedContent = string.Empty;
     [ObservableProperty] private string _editorDailyRetrospective = string.Empty;
+    [ObservableProperty] private decimal _editorPriority;
     [ObservableProperty] private int? _editorParentId;
     [ObservableProperty] private string _editorParentTitle = string.Empty;
     [ObservableProperty] private DateTime? _editorStartDate = DateTime.Today;
@@ -43,15 +52,21 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string _settingsErrorMessage = string.Empty;
     [ObservableProperty] private bool _isConnectionErrorDialogOpen;
     [ObservableProperty] private string _connectionErrorMessage = string.Empty;
+    [ObservableProperty] private bool _isBackendConnected;
+    [ObservableProperty] private bool _isConnectionBusy;
+    [ObservableProperty] private string _connectionGateApiBaseUrl = string.Empty;
+    [ObservableProperty] private string _connectionGateErrorMessage = string.Empty;
     [ObservableProperty] private bool _isExportRangeDialogOpen;
     [ObservableProperty] private DateTime? _exportStartDate = DateTime.Today;
     [ObservableProperty] private DateTime? _exportEndDate = DateTime.Today;
     [ObservableProperty] private string _exportRangeErrorMessage = string.Empty;
+    [ObservableProperty] private bool _isAuthenticated;
 
     public MainViewModel()
     {
         LoadPersistedSettings();
-        _ = LoadTasksAsync();
+        ConnectionGateApiBaseUrl = ApiBaseUrl;
+        _ = InitializeConnectionAsync();
     }
 
     public string CurrentScopeLabel => SelectedDate?.ToString("yyyy년 MM월 dd일") ?? "날짜 없음";
@@ -78,8 +93,13 @@ public partial class MainViewModel : ViewModelBase
     public bool HasEditorParentTitle => !string.IsNullOrWhiteSpace(EditorParentTitle);
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
     public bool HasSettingsErrorMessage => !string.IsNullOrWhiteSpace(SettingsErrorMessage);
+    public bool IsConnectionGateVisible => !IsBackendConnected || !IsAuthenticated;
+    public bool IsLoggedInStatusVisible => IsBackendConnected && IsAuthenticated;
+    public bool HasConnectionGateErrorMessage => !string.IsNullOrWhiteSpace(ConnectionGateErrorMessage);
     public bool HasExportRangeErrorMessage => !string.IsNullOrWhiteSpace(ExportRangeErrorMessage);
     public bool CanEditExistingTask => IsEditorEnabled && !IsNewTask && SelectedTask is not null;
+    public bool IsCredentialSaveSupported => _credentialStore.IsSaveSupported;
+    public string CredentialSaveUnsupportedReason => _credentialStore.UnsupportedReason;
 
     partial void OnSelectedDateChanged(DateTime? value)
     {
@@ -131,6 +151,47 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasSettingsErrorMessage));
     }
 
+    partial void OnIsBackendConnectedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsConnectionGateVisible));
+        OnPropertyChanged(nameof(IsLoggedInStatusVisible));
+    }
+
+    partial void OnIsAuthenticatedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsConnectionGateVisible));
+        OnPropertyChanged(nameof(IsLoggedInStatusVisible));
+    }
+
+    partial void OnConnectionGateErrorMessageChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasConnectionGateErrorMessage));
+    }
+
+    partial void OnSettingsUseSystemThemeChanged(bool value)
+    {
+        if (value)
+        {
+            ApplyThemePreview(AppThemeMode.System);
+        }
+    }
+
+    partial void OnSettingsUseLightThemeChanged(bool value)
+    {
+        if (value)
+        {
+            ApplyThemePreview(AppThemeMode.Light);
+        }
+    }
+
+    partial void OnSettingsUseDarkThemeChanged(bool value)
+    {
+        if (value)
+        {
+            ApplyThemePreview(AppThemeMode.Dark);
+        }
+    }
+
     partial void OnExportRangeErrorMessageChanged(string value)
     {
         OnPropertyChanged(nameof(HasExportRangeErrorMessage));
@@ -139,7 +200,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private async Task LoadTasksAsync()
     {
-        if (SelectedDate is null)
+        if (SelectedDate is null || !IsBackendConnected || !IsAuthenticated)
         {
             return;
         }
@@ -150,7 +211,7 @@ public partial class MainViewModel : ViewModelBase
 
         try
         {
-            using WorkLogApiClient client = new(ApiBaseUrl);
+            using WorkLogApiClient client = CreateAuthenticatedClient();
             IReadOnlyList<TaskDto> loadedTasks = await client.GetTasksAsync(SelectedDate.Value, cancellationToken);
             Tasks = new ObservableCollection<TaskDto>(loadedTasks);
             StatusMessage = $"{loadedTasks.Count}개 과업을 불러왔습니다.";
@@ -226,7 +287,7 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             TaskWriteRequest request = BuildWriteRequest();
-            using WorkLogApiClient client = new(ApiBaseUrl);
+            using WorkLogApiClient client = CreateAuthenticatedClient();
             TaskDto savedTask = IsNewTask || SelectedTask is null
                 ? await client.CreateTaskAsync(request, CancellationToken.None)
                 : await client.UpdateTaskAsync(SelectedTask.Id, request, CancellationToken.None);
@@ -264,7 +325,7 @@ public partial class MainViewModel : ViewModelBase
 
         try
         {
-            using WorkLogApiClient client = new(ApiBaseUrl);
+            using WorkLogApiClient client = CreateAuthenticatedClient();
             await client.DeleteTaskAsync(SelectedTask.Id, CancellationToken.None);
             StatusMessage = "선택한 과업과 모든 하위 과업을 삭제했습니다.";
             SelectedTask = null;
@@ -327,6 +388,7 @@ public partial class MainViewModel : ViewModelBase
     {
         IsSettingsDialogOpen = false;
         SettingsErrorMessage = string.Empty;
+        ApplyThemePreview(ThemeMode);
     }
 
     [RelayCommand]
@@ -337,19 +399,85 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task SaveSettingsAsync()
+    private async Task ConnectToBackendAsync()
     {
-        string apiBaseUrl = (SettingsApiBaseUrl ?? string.Empty).Trim().TrimEnd('/');
-        if (string.IsNullOrWhiteSpace(apiBaseUrl))
+        await ConnectToBackendAsync(ConnectionGateApiBaseUrl, saveSettings: true);
+    }
+
+    [RelayCommand]
+    private async Task LoginAsync()
+    {
+        string apiBaseUrl = (ConnectionGateApiBaseUrl ?? string.Empty).Trim().TrimEnd('/');
+        if (!ValidateApiBaseUrl(apiBaseUrl, out string? validationError))
         {
-            SettingsErrorMessage = "API 주소를 입력하세요.";
+            ConnectionGateErrorMessage = validationError ?? "API 주소를 확인하세요.";
             return;
         }
 
-        if (!Uri.TryCreate(apiBaseUrl, UriKind.Absolute, out Uri? uri) ||
-            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        if (string.IsNullOrWhiteSpace(LoginUsername) || string.IsNullOrWhiteSpace(LoginPassword))
         {
-            SettingsErrorMessage = "http:// 또는 https:// 주소를 입력하세요.";
+            ConnectionGateErrorMessage = "아이디와 비밀번호를 입력하세요.";
+            return;
+        }
+
+        try
+        {
+            IsConnectionBusy = true;
+            ConnectionGateErrorMessage = string.Empty;
+            using WorkLogApiClient client = new(apiBaseUrl);
+            await client.CheckConnectionAsync(CancellationToken.None);
+            TokenResponse token = await client.LoginAsync(
+                new LoginRequest
+                {
+                    Username = LoginUsername.Trim(),
+                    Password = LoginPassword
+                },
+                CancellationToken.None);
+
+            ApiBaseUrl = apiBaseUrl;
+            ConnectionGateApiBaseUrl = apiBaseUrl;
+            AccessToken = token.AccessToken;
+            CurrentUsername = LoginUsername.Trim();
+            IsBackendConnected = true;
+            IsAuthenticated = true;
+            await SaveOrClearCredentialsAsync(apiBaseUrl, CurrentUsername, LoginPassword);
+            LoginPassword = string.Empty;
+            StatusMessage = $"{CurrentUsername} 로그인됨.";
+            await _settingsService.SaveSettingsAsync(CreateSettingsResult(), CancellationToken.None);
+            await LoadTasksAsync();
+        }
+        catch (Exception error)
+        {
+            IsAuthenticated = false;
+            ConnectionGateErrorMessage = $"로그인 실패: {error.Message}";
+            StatusMessage = "로그인 실패.";
+        }
+        finally
+        {
+            IsConnectionBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task LogoutAsync()
+    {
+        AccessToken = string.Empty;
+        CurrentUsername = string.Empty;
+        IsAuthenticated = false;
+        Tasks = new ObservableCollection<TaskDto>();
+        SelectedTask = null;
+        ClearEditor();
+        StatusMessage = "로그아웃됨.";
+        await _settingsService.SaveSettingsAsync(CreateSettingsResult(), CancellationToken.None);
+    }
+
+    [RelayCommand]
+    private async Task SaveSettingsAsync()
+    {
+        string apiBaseUrl = (SettingsApiBaseUrl ?? string.Empty).Trim().TrimEnd('/');
+        if (!ValidateApiBaseUrl(apiBaseUrl, out string? validationError))
+        {
+            SettingsErrorMessage = validationError ?? "API 주소를 확인하세요.";
             return;
         }
 
@@ -360,11 +488,11 @@ public partial class MainViewModel : ViewModelBase
 
             bool apiBaseUrlChanged = ApiBaseUrl != apiBaseUrl;
             ApiBaseUrl = apiBaseUrl;
+            ConnectionGateApiBaseUrl = apiBaseUrl;
+            IsBackendConnected = true;
             ThemeMode = ResolveSettingsThemeMode();
-            await _settingsService.SaveSettingsAsync(
-                new AppSettingsResult(ApiBaseUrl, ThemeMode),
-                CancellationToken.None);
-            _settingsService.ApplyThemeMode(ThemeMode);
+            ApplyThemePreview(ThemeMode);
+            await _settingsService.SaveSettingsAsync(CreateSettingsResult(), CancellationToken.None);
             IsSettingsDialogOpen = false;
             SettingsErrorMessage = string.Empty;
             StatusMessage = "설정 저장됨.";
@@ -380,6 +508,79 @@ public partial class MainViewModel : ViewModelBase
             IsConnectionErrorDialogOpen = true;
             SettingsErrorMessage = "연결 확인에 실패했습니다.";
             StatusMessage = "설정 저장 실패.";
+        }
+    }
+
+    private async Task InitializeConnectionAsync()
+    {
+        await ConnectToBackendAsync(ApiBaseUrl, saveSettings: false);
+    }
+
+    private async Task ConnectToBackendAsync(string apiBaseUrlValue, bool saveSettings)
+    {
+        string apiBaseUrl = (apiBaseUrlValue ?? string.Empty).Trim().TrimEnd('/');
+        if (!ValidateApiBaseUrl(apiBaseUrl, out string? validationError))
+        {
+            ConnectionGateErrorMessage = validationError ?? "API 주소를 확인하세요.";
+            IsBackendConnected = false;
+            return;
+        }
+
+        try
+        {
+            IsConnectionBusy = true;
+            ConnectionGateErrorMessage = string.Empty;
+            using WorkLogApiClient client = new(apiBaseUrl);
+            await client.CheckConnectionAsync(CancellationToken.None);
+
+            ApiBaseUrl = apiBaseUrl;
+            ConnectionGateApiBaseUrl = apiBaseUrl;
+            IsBackendConnected = true;
+            StatusMessage = "백엔드 연결됨.";
+
+            if (!string.IsNullOrWhiteSpace(AccessToken))
+            {
+                try
+                {
+                    using WorkLogApiClient authenticatedClient = new(apiBaseUrl, AccessToken);
+                    UserDto currentUser = await authenticatedClient.GetCurrentUserAsync(CancellationToken.None);
+                    CurrentUsername = currentUser.Username;
+                    LoginUsername = currentUser.Username;
+                    IsAuthenticated = true;
+                }
+                catch
+                {
+                    AccessToken = string.Empty;
+                    CurrentUsername = string.Empty;
+                    IsAuthenticated = false;
+                    StatusMessage = "저장된 로그인이 만료되었습니다.";
+                }
+            }
+            else
+            {
+                IsAuthenticated = false;
+                StatusMessage = "로그인이 필요합니다.";
+            }
+
+            if (saveSettings)
+            {
+                await _settingsService.SaveSettingsAsync(CreateSettingsResult(), CancellationToken.None);
+            }
+
+            if (IsAuthenticated)
+            {
+                await LoadTasksAsync();
+            }
+        }
+        catch (Exception error)
+        {
+            IsBackendConnected = false;
+            ConnectionGateErrorMessage = $"연결 확인 실패: {error.Message}";
+            StatusMessage = "백엔드 연결 실패.";
+        }
+        finally
+        {
+            IsConnectionBusy = false;
         }
     }
 
@@ -428,7 +629,7 @@ public partial class MainViewModel : ViewModelBase
         {
             IsExportRangeDialogOpen = false;
             ExportRangeErrorMessage = string.Empty;
-            using WorkLogApiClient client = new(ApiBaseUrl);
+            using WorkLogApiClient client = CreateAuthenticatedClient();
             byte[] content = await client.ExportExcelAsync(startDate.Value, endDate.Value, CancellationToken.None);
             string fileName = $"{startDate:yyyy-MM-dd} - {endDate:yyyy-MM-dd} 업무일지.xlsx";
             string? path = await _exportFileService.SaveExcelAsync(content, fileName, CancellationToken.None);
@@ -467,17 +668,65 @@ public partial class MainViewModel : ViewModelBase
         return AppThemeMode.System;
     }
 
+    private void ApplyThemePreview(string themeMode)
+    {
+        ActiveThemeVariant = ToThemeVariant(themeMode);
+        _settingsService.ApplyThemeMode(themeMode);
+    }
+
+    private static ThemeVariant ToThemeVariant(string themeMode)
+    {
+        return themeMode switch
+        {
+            AppThemeMode.Light => ThemeVariant.Light,
+            AppThemeMode.Dark => ThemeVariant.Dark,
+            _ => ThemeVariant.Default,
+        };
+    }
+
+    private static bool ValidateApiBaseUrl(string apiBaseUrl, out string? errorMessage)
+    {
+        if (string.IsNullOrWhiteSpace(apiBaseUrl))
+        {
+            errorMessage = "API 주소를 입력하세요.";
+            return false;
+        }
+
+        if (!Uri.TryCreate(apiBaseUrl, UriKind.Absolute, out Uri? uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            errorMessage = "http:// 또는 https:// 주소를 입력하세요.";
+            return false;
+        }
+
+        errorMessage = null;
+        return true;
+    }
+
     private void LoadPersistedSettings()
     {
+        AppDefaults defaults = AppDefaultsService.Load();
+        ApiBaseUrl = defaults.ApiBaseUrl;
+        ConnectionGateApiBaseUrl = defaults.ApiBaseUrl;
+        LoginUsername = defaults.Username;
+        ThemeMode = defaults.ThemeMode;
+        ApplyThemePreview(ThemeMode);
+
         AppSettingsResult? settings = _settingsService.LoadSettings();
         if (settings is null)
         {
+            _ = LoadStoredCredentialsAsync();
             return;
         }
 
         ApiBaseUrl = settings.ApiBaseUrl;
+        ConnectionGateApiBaseUrl = settings.ApiBaseUrl;
+        AccessToken = settings.AccessToken;
+        LoginUsername = settings.Username;
+        CurrentUsername = settings.Username;
         ThemeMode = settings.ThemeMode;
-        _settingsService.ApplyThemeMode(ThemeMode);
+        ApplyThemePreview(ThemeMode);
+        _ = LoadStoredCredentialsAsync();
     }
 
     private void BeginNewTask(int? parentId, string parentTitle)
@@ -491,6 +740,7 @@ public partial class MainViewModel : ViewModelBase
         EditorContent = string.Empty;
         EditorPerformedContent = string.Empty;
         EditorDailyRetrospective = string.Empty;
+        EditorPriority = 0;
         EditorStartDate = SelectedDate ?? DateTime.Today;
         EditorDueDate = SelectedDate ?? DateTime.Today;
         EditorActualEndDate = null;
@@ -506,6 +756,7 @@ public partial class MainViewModel : ViewModelBase
         EditorParentTitle = ResolveParentTitle(task.ParentId);
         EditorTitle = task.Title;
         EditorContent = task.Content;
+        EditorPriority = task.Priority;
         EditorStartDate = ToPickerDate(task.StartAt);
         EditorDueDate = ToPickerDate(task.DueAt);
         EditorActualEndDate = task.ActualEndAt is null ? null : ToPickerDate(task.ActualEndAt.Value);
@@ -524,6 +775,7 @@ public partial class MainViewModel : ViewModelBase
         EditorContent = string.Empty;
         EditorPerformedContent = string.Empty;
         EditorDailyRetrospective = string.Empty;
+        EditorPriority = 0;
         EditorActualEndDate = null;
         OnPropertyChanged(nameof(EditorModeLabel));
         OnPropertyChanged(nameof(CanEditExistingTask));
@@ -538,12 +790,69 @@ public partial class MainViewModel : ViewModelBase
             ParentId = EditorParentId,
             Title = EditorTitle.Trim(),
             Content = EditorContent,
+            Priority = (int)Math.Clamp(EditorPriority, 0, 255),
             StartAt = start.ToUniversalTime(),
             DueAt = due.ToUniversalTime(),
             ActualEndAt = EditorActualEndDate is null
                 ? null
                 : ToRequestDateTimeOffset(EditorActualEndDate, DateTimeOffset.Now).ToUniversalTime()
         };
+    }
+
+    private WorkLogApiClient CreateAuthenticatedClient()
+    {
+        return new WorkLogApiClient(ApiBaseUrl, AccessToken);
+    }
+
+    private AppSettingsResult CreateSettingsResult()
+    {
+        return new AppSettingsResult(ApiBaseUrl, ThemeMode, AccessToken, CurrentUsername);
+    }
+
+    private async Task LoadStoredCredentialsAsync()
+    {
+        if (!_credentialStore.IsSaveSupported)
+        {
+            RememberCredentials = false;
+            return;
+        }
+
+        try
+        {
+            StoredCredentials? credentials = await _credentialStore.LoadAsync(CancellationToken.None);
+            if (credentials is null)
+            {
+                return;
+            }
+
+            ApiBaseUrl = credentials.ApiBaseUrl;
+            ConnectionGateApiBaseUrl = credentials.ApiBaseUrl;
+            LoginUsername = credentials.Username;
+            LoginPassword = credentials.Password;
+            RememberCredentials = true;
+        }
+        catch
+        {
+            RememberCredentials = false;
+        }
+    }
+
+    private async Task SaveOrClearCredentialsAsync(string apiBaseUrl, string username, string password)
+    {
+        if (!_credentialStore.IsSaveSupported)
+        {
+            return;
+        }
+
+        if (!RememberCredentials)
+        {
+            await _credentialStore.ClearAsync(CancellationToken.None);
+            return;
+        }
+
+        await _credentialStore.SaveAsync(
+            new StoredCredentials(apiBaseUrl, username, password),
+            CancellationToken.None);
     }
 
     private void LoadSelectedTaskEntry()

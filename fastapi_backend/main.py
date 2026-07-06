@@ -1,17 +1,19 @@
 from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.auth_routes import AuthRouter
 from app.database import Database
 from app.routes import TaskRouter
+from app.settings import settings
 
 
-database: Database = Database()
-app: FastAPI = FastAPI(title="Work Log Management System", version="0.1.0")
+database: Database = Database(database_url=settings.database_url)
+app: FastAPI = FastAPI(title=settings.app_title, version=settings.app_version)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=settings.cors_origins,
+    allow_credentials=settings.cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -22,6 +24,7 @@ def initialize_application() -> None:
     database.initialize()
 
 
+app.include_router(AuthRouter(database).router)
 app.include_router(TaskRouter(database).router)
 
 

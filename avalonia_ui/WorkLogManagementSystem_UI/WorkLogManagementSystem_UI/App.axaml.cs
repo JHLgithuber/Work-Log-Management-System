@@ -1,9 +1,11 @@
+using System;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Data.Core;
 using Avalonia.Data.Core.Plugins;
 using System.Linq;
 using Avalonia.Markup.Xaml;
+using WorkLogManagementSystem_UI.Services;
 using WorkLogManagementSystem_UI.ViewModels;
 using WorkLogManagementSystem_UI.Views;
 
@@ -18,6 +20,8 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        ActualThemeVariantChanged += OnActualThemeVariantChanged;
+
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             // Avoid duplicate validations from both Avalonia and the CommunityToolkit. 
@@ -37,6 +41,11 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private void OnActualThemeVariantChanged(object? sender, EventArgs eventArgs)
+    {
+        AppSettingsService.RefreshCurrentThemeBrushResources();
     }
 
     private void DisableAvaloniaDataAnnotationValidation()

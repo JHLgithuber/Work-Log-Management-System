@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -15,9 +16,13 @@ public sealed class WorkLogApiClient : IDisposable
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly HttpClient _httpClient;
 
-    public WorkLogApiClient(string baseUrl)
+    public WorkLogApiClient(string baseUrl, string? accessToken = null)
     {
         _httpClient = new HttpClient { BaseAddress = new Uri(NormalizeBaseUrl(baseUrl)) };
+        if (!string.IsNullOrWhiteSpace(accessToken))
+        {
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Trim());
+        }
     }
 
     public async Task CheckConnectionAsync(CancellationToken cancellationToken)
@@ -31,6 +36,20 @@ public sealed class WorkLogApiClient : IDisposable
         await EnsureSuccessAsync(response, cancellationToken);
         throw new HttpRequestException(
             $"The backend health check returned {(int)response.StatusCode} {response.ReasonPhrase}; expected 204 No Content.");
+    }
+
+    public async Task<TokenResponse> LoginAsync(LoginRequest request, CancellationToken cancellationToken)
+    {
+        using HttpResponseMessage response = await _httpClient.PostAsJsonAsync("/auth/login", request, JsonOptions, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        TokenResponse? token = await response.Content.ReadFromJsonAsync<TokenResponse>(JsonOptions, cancellationToken);
+        return token ?? throw new InvalidOperationException("The backend returned an empty login response.");
+    }
+
+    public async Task<UserDto> GetCurrentUserAsync(CancellationToken cancellationToken)
+    {
+        UserDto? user = await _httpClient.GetFromJsonAsync<UserDto>("/auth/me", JsonOptions, cancellationToken);
+        return user ?? throw new InvalidOperationException("The backend returned an empty user response.");
     }
 
     public async Task<IReadOnlyList<TaskDto>> GetTasksAsync(DateTime targetDate, CancellationToken cancellationToken)

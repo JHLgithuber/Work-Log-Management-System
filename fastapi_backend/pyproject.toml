@@ -4,6 +4,8 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.136.3",
+    "mariadb>=1.1.14",
+    "python-dotenv>=1.0",
     "sqlalchemy>=2.0",
     "uvicorn>=0.48.0",
 ]

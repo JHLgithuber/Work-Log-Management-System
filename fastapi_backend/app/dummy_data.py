@@ -7,6 +7,7 @@ from app.database import Database
 from app.domain import DateBounds, Task, TaskCreate, TaskUpdate, WorkEntryUpsert
 from app.repository import TaskRepository
 from app.service import TaskService
+from app.settings import settings
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,7 @@ class DummyTaskSpec:
     content: str
     start_at: datetime
     due_at: datetime
+    priority: int = 0
     actual_end_at: datetime | None = None
     entries: list[DummyEntrySpec] = field(default_factory=list)
     children: list["DummyTaskSpec"] = field(default_factory=list)
@@ -36,6 +38,7 @@ class SeedResult:
 class DummyDataSeeder:
     def __init__(self, service: TaskService) -> None:
         self._service: TaskService = service
+        self._username: str = settings.admin_username
 
     def seed(self) -> SeedResult:
         task_count: int = 0
@@ -50,6 +53,7 @@ class DummyDataSeeder:
         task: Task = self._upsert_task(parent_id, specification)
         for entry_specification in specification.entries:
             self._service.upsert_work_entry(
+                self._username,
                 WorkEntryUpsert(
                     task_id=task.id,
                     entry_date=entry_specification.entry_date,
@@ -65,16 +69,18 @@ class DummyDataSeeder:
             child_task_count += 1 + nested_task_count
             child_entry_count += len(child_task.entries) + nested_entry_count
 
-        return self._service.get_task(task.id), child_task_count, child_entry_count
+        return self._service.get_task(self._username, task.id), child_task_count, child_entry_count
 
     def _upsert_task(self, parent_id: int | None, specification: DummyTaskSpec) -> Task:
         existing_task: Task | None = self._find_existing_task(parent_id, specification.title)
         if existing_task is None:
             return self._service.create_task(
+                self._username,
                 TaskCreate(
                     parent_id=parent_id,
                     title=specification.title,
                     content=specification.content,
+                    priority=specification.priority,
                     start_at=specification.start_at,
                     due_at=specification.due_at,
                     actual_end_at=specification.actual_end_at,
@@ -82,11 +88,13 @@ class DummyDataSeeder:
             )
 
         return self._service.update_task(
+            self._username,
             existing_task.id,
             TaskUpdate(
                 parent_id=parent_id,
                 title=specification.title,
                 content=specification.content,
+                priority=specification.priority,
                 start_at=specification.start_at,
                 due_at=specification.due_at,
                 actual_end_at=specification.actual_end_at,
@@ -94,7 +102,7 @@ class DummyDataSeeder:
         )
 
     def _find_existing_task(self, parent_id: int | None, title: str) -> Task | None:
-        for root_task in self._service.list_all_tasks():
+        for root_task in self._service.list_all_tasks(self._username):
             found_task: Task | None = self._find_in_tree(root_task, parent_id, title)
             if found_task is not None:
                 return found_task

@@ -18,6 +18,9 @@ public sealed class TaskDto
     [JsonPropertyName("content")]
     public string Content { get; set; } = string.Empty;
 
+    [JsonPropertyName("priority")]
+    public int Priority { get; set; }
+
     [JsonPropertyName("start_at")]
     public DateTimeOffset StartAt { get; set; }
 
@@ -41,6 +44,9 @@ public sealed class TaskDto
 
     [JsonIgnore]
     public string DateSummary => $"{FormatDate(StartAt)} - {FormatDate(ActualEndAt ?? DueAt)}";
+
+    [JsonIgnore]
+    public string PrioritySummary => Priority <= 0 ? "우선순위 없음" : $"우선순위 {Priority}";
 
     private static string FormatDate(DateTimeOffset value)
     {
@@ -93,6 +99,9 @@ public sealed class TaskWriteRequest
     [JsonPropertyName("content")]
     public string Content { get; set; } = string.Empty;
 
+    [JsonPropertyName("priority")]
+    public int Priority { get; set; }
+
     [JsonPropertyName("start_at")]
     public DateTimeOffset StartAt { get; set; }
 
@@ -110,4 +119,34 @@ public sealed class WorkEntryWriteRequest
 
     [JsonPropertyName("retrospective")]
     public string Retrospective { get; set; } = string.Empty;
+}
+
+public sealed class LoginRequest
+{
+    [JsonPropertyName("username")]
+    public string Username { get; set; } = string.Empty;
+
+    [JsonPropertyName("password")]
+    public string Password { get; set; } = string.Empty;
+}
+
+public sealed class TokenResponse
+{
+    [JsonPropertyName("access_token")]
+    public string AccessToken { get; set; } = string.Empty;
+
+    [JsonPropertyName("token_type")]
+    public string TokenType { get; set; } = string.Empty;
+}
+
+public sealed class UserDto
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("username")]
+    public string Username { get; set; } = string.Empty;
+
+    [JsonPropertyName("display_name")]
+    public string DisplayName { get; set; } = string.Empty;
 }

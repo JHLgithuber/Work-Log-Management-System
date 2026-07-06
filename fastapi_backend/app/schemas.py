@@ -11,6 +11,7 @@ class TaskWriteRequest(BaseModel):
     parent_id: int | None = None
     title: str = Field(min_length=1, max_length=200)
     content: str = ""
+    priority: int = Field(default=0, ge=0, le=255)
     start_at: datetime = DateBounds.MINIMUM
     due_at: datetime = DateBounds.MAXIMUM
     actual_end_at: datetime | None = None
@@ -20,6 +21,7 @@ class TaskWriteRequest(BaseModel):
             parent_id=self.parent_id,
             title=self.title.strip(),
             content=self.content,
+            priority=self.priority,
             start_at=self.start_at,
             due_at=self.due_at,
             actual_end_at=self.actual_end_at,
@@ -30,6 +32,7 @@ class TaskWriteRequest(BaseModel):
             parent_id=self.parent_id,
             title=self.title.strip(),
             content=self.content,
+            priority=self.priority,
             start_at=self.start_at,
             due_at=self.due_at,
             actual_end_at=self.actual_end_at,
@@ -73,9 +76,11 @@ class WorkEntryResponse(BaseModel):
 
 class TaskResponse(BaseModel):
     id: int
+    user_id: int | None
     parent_id: int | None
     title: str
     content: str
+    priority: int
     start_at: datetime
     due_at: datetime
     actual_end_at: datetime | None
@@ -88,9 +93,11 @@ class TaskResponse(BaseModel):
     def from_domain(cls, task: Task) -> "TaskResponse":
         return cls(
             id=task.id,
+            user_id=task.user_id,
             parent_id=task.parent_id,
             title=task.title,
             content=task.content,
+            priority=task.priority,
             start_at=task.start_at,
             due_at=task.due_at,
             actual_end_at=task.actual_end_at,

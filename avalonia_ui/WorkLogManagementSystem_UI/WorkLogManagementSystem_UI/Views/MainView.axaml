@@ -132,11 +132,14 @@
     </Style>
   </UserControl.Styles>
 
+  <ThemeVariantScope x:Name="RootThemeScope"
+                     RequestedThemeVariant="{Binding ActiveThemeVariant}">
   <Grid Background="{DynamicResource AppPageBackgroundBrush}" RowDefinitions="Auto,*">
     <Border x:Name="TopBar"
             Grid.Row="0"
             Background="{DynamicResource AppTopBarBrush}"
-            Padding="10,8">
+            Padding="10,8"
+            IsVisible="{Binding IsBackendConnected}">
       <Grid x:Name="TopBarShell"
             ColumnDefinitions="*,Auto"
             ColumnSpacing="12"
@@ -167,6 +170,10 @@
                      Foreground="{DynamicResource AppTopBarMutedBrush}"
                      Margin="0,0,10,0"
                      VerticalAlignment="Center"/>
+          <TextBlock Text="{Binding CurrentUsername}"
+                     Foreground="{DynamicResource AppTopBarMutedBrush}"
+                     VerticalAlignment="Center"
+                     IsVisible="{Binding IsLoggedInStatusVisible}"/>
         </WrapPanel>
 
         <StackPanel x:Name="TopBarActionGroup"
@@ -175,7 +182,7 @@
                     Spacing="8"
                     HorizontalAlignment="Right"
                     VerticalAlignment="Center">
-          <Button x:Name="SettingsButton"
+	          <Button x:Name="SettingsButton"
                   Classes="icon-toolbar topbar-action"
                   Command="{Binding OpenSettingsCommand}"
                   ToolTip.Tip="설정"
@@ -183,8 +190,11 @@
             <PathIcon Width="18"
                       Height="18"
                       Data="M19.43 12.98C19.47 12.66 19.5 12.34 19.5 12C19.5 11.66 19.47 11.33 19.42 11.02L21.54 9.37C21.73 9.22 21.78 8.95 21.66 8.73L19.66 5.27C19.54 5.05 19.29 4.96 19.06 5.05L16.56 6.06C16.04 5.66 15.5 5.32 14.88 5.07L14.5 2.42C14.47 2.18 14.25 2 14 2H10C9.75 2 9.54 2.18 9.5 2.42L9.12 5.07C8.5 5.32 7.96 5.66 7.44 6.06L4.94 5.05C4.71 4.96 4.46 5.05 4.34 5.27L2.34 8.73C2.21 8.95 2.27 9.22 2.46 9.37L4.58 11.02C4.53 11.33 4.5 11.67 4.5 12C4.5 12.33 4.53 12.66 4.58 12.98L2.46 14.63C2.27 14.78 2.22 15.05 2.34 15.27L4.34 18.73C4.46 18.95 4.71 19.04 4.94 18.95L7.44 17.94C7.96 18.34 8.5 18.68 9.12 18.93L9.5 21.58C9.54 21.82 9.75 22 10 22H14C14.25 22 14.47 21.82 14.5 21.58L14.88 18.93C15.5 18.68 16.04 18.34 16.56 17.94L19.06 18.95C19.29 19.04 19.54 18.95 19.66 18.73L21.66 15.27C21.78 15.05 21.73 14.78 21.54 14.63L19.43 12.98ZM12 15.5C10.07 15.5 8.5 13.93 8.5 12C8.5 10.07 10.07 8.5 12 8.5C13.93 8.5 15.5 10.07 15.5 12C15.5 13.93 13.93 15.5 12 15.5Z"/>
-          </Button>
-          <Button x:Name="RefreshButton"
+	          </Button>
+	          <Button Classes="toolbar topbar-action"
+	                  Content="로그아웃"
+	                  Command="{Binding LogoutCommand}"/>
+	          <Button x:Name="RefreshButton"
                   Classes="icon-toolbar topbar-action"
                   Command="{Binding LoadTasksCommand}"
                   ToolTip.Tip="새로고침"
@@ -206,7 +216,8 @@
       </Grid>
     </Border>
 
-    <Grid Grid.Row="1">
+    <Grid Grid.Row="1"
+          IsVisible="{Binding IsBackendConnected}">
       <Grid x:Name="ResponsiveShell"
             ColumnDefinitions="360,*"
             RowDefinitions="*"
@@ -309,10 +320,13 @@
                                  FontWeight="SemiBold"
                                  Foreground="{DynamicResource AppTextPrimaryBrush}"
                                  TextTrimming="CharacterEllipsis"/>
-                      <TextBlock Text="{Binding DateSummary}"
-                                 FontSize="12"
-                                 Foreground="{DynamicResource AppTextSecondaryBrush}"/>
-                    </StackPanel>
+	                      <TextBlock Text="{Binding DateSummary}"
+	                                 FontSize="12"
+	                                 Foreground="{DynamicResource AppTextSecondaryBrush}"/>
+	                      <TextBlock Text="{Binding PrioritySummary}"
+	                                 FontSize="12"
+	                                 Foreground="{DynamicResource AppTextSecondaryBrush}"/>
+	                    </StackPanel>
                   </Grid>
                 </TreeDataTemplate>
               </TreeView.DataTemplates>
@@ -356,12 +370,21 @@
                           VerticalScrollBarVisibility="Auto">
               <StackPanel Spacing="14"
                           IsEnabled="{Binding IsEditorEnabled}">
-                <StackPanel>
-                  <TextBlock Classes="label"
-                             Text="제목"/>
-                  <TextBox Text="{Binding EditorTitle}"
-                           Watermark="과업 제목"/>
-                </StackPanel>
+	                <StackPanel>
+	                  <TextBlock Classes="label"
+	                             Text="제목"/>
+	                  <TextBox Text="{Binding EditorTitle}"
+	                           Watermark="과업 제목"/>
+	                </StackPanel>
+
+	                <StackPanel>
+	                  <TextBlock Classes="label"
+	                             Text="우선순위"/>
+	                  <NumericUpDown Minimum="0"
+	                                 Maximum="255"
+	                                 Increment="1"
+	                                 Value="{Binding EditorPriority, Mode=TwoWay}"/>
+	                </StackPanel>
 
                 <Grid x:Name="EditorDateGrid"
                       ColumnDefinitions="*,*,*"
@@ -590,5 +613,71 @@
         </Grid>
       </Border>
     </Border>
+
+    <Border Grid.RowSpan="2"
+            Background="{DynamicResource AppPageBackgroundBrush}"
+            Padding="18"
+            ZIndex="30"
+            IsVisible="{Binding IsConnectionGateVisible}">
+      <Border Classes="modal-card"
+              MaxWidth="560">
+        <StackPanel Spacing="18">
+	          <StackPanel Spacing="4">
+	            <TextBlock Text="로그인"
+	                       FontSize="24"
+	                       FontWeight="SemiBold"
+	                       Foreground="{DynamicResource AppTextPrimaryBrush}"/>
+	            <TextBlock Text="업무일지 백엔드 주소와 계정을 입력하세요."
+	                       Foreground="{DynamicResource AppTextSecondaryBrush}"
+	                       TextWrapping="Wrap"/>
+	          </StackPanel>
+
+          <StackPanel>
+            <TextBlock Classes="label"
+                       Text="API 주소"/>
+	            <TextBox Text="{Binding ConnectionGateApiBaseUrl, Mode=TwoWay}"
+	                     Watermark="http://192.168.0.14:8000"/>
+	          </StackPanel>
+
+	          <StackPanel>
+	            <TextBlock Classes="label"
+	                       Text="아이디"/>
+		            <TextBox Text="{Binding LoginUsername, Mode=TwoWay}"
+		                     Watermark="admin"/>
+	          </StackPanel>
+
+	          <StackPanel>
+	            <TextBlock Classes="label"
+	                       Text="비밀번호"/>
+	            <TextBox Text="{Binding LoginPassword, Mode=TwoWay}"
+	                     PasswordChar="*"/>
+	          </StackPanel>
+
+          <CheckBox Content="계정정보 저장"
+                    IsChecked="{Binding RememberCredentials, Mode=TwoWay}"
+                    IsEnabled="{Binding IsCredentialSaveSupported}"/>
+
+          <TextBlock Text="{Binding ConnectionGateErrorMessage}"
+                     Foreground="{DynamicResource AppErrorBrush}"
+                     TextWrapping="Wrap"
+                     IsVisible="{Binding HasConnectionGateErrorMessage}"/>
+
+          <TextBlock Text="연결 확인 중..."
+                     Foreground="{DynamicResource AppTextSecondaryBrush}"
+                     IsVisible="{Binding IsConnectionBusy}"/>
+
+	          <StackPanel Orientation="Horizontal"
+	                      HorizontalAlignment="Right"
+	                      Spacing="8">
+	            <Button Content="서버 확인"
+	                    Command="{Binding ConnectToBackendCommand}"/>
+	            <Button Classes="primary"
+	                    Content="로그인"
+	                    Command="{Binding LoginCommand}"/>
+	          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
   </Grid>
+  </ThemeVariantScope>
 </UserControl>

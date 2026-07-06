@@ -14,56 +14,28 @@
             <FontFamily x:Key="AppFontFamily">
                 avares://WorkLogManagementSystem_UI/Assets/Fonts#Noto Sans KR
             </FontFamily>
-            <ResourceDictionary.ThemeDictionaries>
-                <ResourceDictionary x:Key="Light">
-                    <SolidColorBrush x:Key="AppPageBackgroundBrush" Color="#F4F7FA"/>
-                    <SolidColorBrush x:Key="AppTopBarBrush" Color="#192232"/>
-                    <SolidColorBrush x:Key="AppPanelBackgroundBrush" Color="#FFFFFF"/>
-                    <SolidColorBrush x:Key="AppPanelBorderBrush" Color="#D9E0EA"/>
-                    <SolidColorBrush x:Key="AppTextPrimaryBrush" Color="#18212F"/>
-                    <SolidColorBrush x:Key="AppTextSecondaryBrush" Color="#5E6A7D"/>
-                    <SolidColorBrush x:Key="AppTextMutedBrush" Color="#8A95A6"/>
-                    <SolidColorBrush x:Key="AppTopBarTextBrush" Color="#FFFFFF"/>
-                    <SolidColorBrush x:Key="AppTopBarMutedBrush" Color="#B7C6D8"/>
-                    <SolidColorBrush x:Key="AppTopActionHoverBackgroundBrush" Color="#5E6A7D"/>
-                    <SolidColorBrush x:Key="AppTopActionHoverBorderBrush" Color="#8ABCE8"/>
-                    <SolidColorBrush x:Key="AppTopActionPressedBackgroundBrush" Color="#243346"/>
-                    <SolidColorBrush x:Key="AppTopActionAccentHoverBorderBrush" Color="#79D7C0"/>
-                    <SolidColorBrush x:Key="AppToolbarButtonBackgroundBrush" Color="#FFFFFF"/>
-                    <SolidColorBrush x:Key="AppToolbarButtonForegroundBrush" Color="#162235"/>
-                    <SolidColorBrush x:Key="AppPrimaryBrush" Color="#226C5D"/>
-                    <SolidColorBrush x:Key="AppAccentBrush" Color="#2E7D6A"/>
-                    <SolidColorBrush x:Key="AppAccentHoverBrush" Color="#5E6A7D"/>
-                    <SolidColorBrush x:Key="AppAccentPressedBrush" Color="#1E5D50"/>
-                    <SolidColorBrush x:Key="AppDangerBrush" Color="#B43B4A"/>
-                    <SolidColorBrush x:Key="AppErrorBrush" Color="#C62828"/>
-                    <SolidColorBrush x:Key="AppOnAccentBrush" Color="#FFFFFF"/>
-                </ResourceDictionary>
-                <ResourceDictionary x:Key="Dark">
-                    <SolidColorBrush x:Key="AppPageBackgroundBrush" Color="#10151D"/>
-                    <SolidColorBrush x:Key="AppTopBarBrush" Color="#0B111A"/>
-                    <SolidColorBrush x:Key="AppPanelBackgroundBrush" Color="#18202B"/>
-                    <SolidColorBrush x:Key="AppPanelBorderBrush" Color="#2A3544"/>
-                    <SolidColorBrush x:Key="AppTextPrimaryBrush" Color="#E7ECF3"/>
-                    <SolidColorBrush x:Key="AppTextSecondaryBrush" Color="#AAB6C6"/>
-                    <SolidColorBrush x:Key="AppTextMutedBrush" Color="#7F8B9D"/>
-                    <SolidColorBrush x:Key="AppTopBarTextBrush" Color="#F4F7FB"/>
-                    <SolidColorBrush x:Key="AppTopBarMutedBrush" Color="#AAB6C6"/>
-                    <SolidColorBrush x:Key="AppTopActionHoverBackgroundBrush" Color="#2E3F54"/>
-                    <SolidColorBrush x:Key="AppTopActionHoverBorderBrush" Color="#7DB3E0"/>
-                    <SolidColorBrush x:Key="AppTopActionPressedBackgroundBrush" Color="#243348"/>
-                    <SolidColorBrush x:Key="AppTopActionAccentHoverBorderBrush" Color="#78D5BF"/>
-                    <SolidColorBrush x:Key="AppToolbarButtonBackgroundBrush" Color="#263241"/>
-                    <SolidColorBrush x:Key="AppToolbarButtonForegroundBrush" Color="#F4F7FB"/>
-                    <SolidColorBrush x:Key="AppPrimaryBrush" Color="#2E7D6A"/>
-                    <SolidColorBrush x:Key="AppAccentBrush" Color="#3B927D"/>
-                    <SolidColorBrush x:Key="AppAccentHoverBrush" Color="#4AA58E"/>
-                    <SolidColorBrush x:Key="AppAccentPressedBrush" Color="#347D6B"/>
-                    <SolidColorBrush x:Key="AppDangerBrush" Color="#C74A5A"/>
-                    <SolidColorBrush x:Key="AppErrorBrush" Color="#FF6B6B"/>
-                    <SolidColorBrush x:Key="AppOnAccentBrush" Color="#FFFFFF"/>
-                </ResourceDictionary>
-            </ResourceDictionary.ThemeDictionaries>
+            <SolidColorBrush x:Key="AppPageBackgroundBrush" Color="#F4F7FA"/>
+            <SolidColorBrush x:Key="AppTopBarBrush" Color="#192232"/>
+            <SolidColorBrush x:Key="AppPanelBackgroundBrush" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="AppPanelBorderBrush" Color="#D9E0EA"/>
+            <SolidColorBrush x:Key="AppTextPrimaryBrush" Color="#18212F"/>
+            <SolidColorBrush x:Key="AppTextSecondaryBrush" Color="#5E6A7D"/>
+            <SolidColorBrush x:Key="AppTextMutedBrush" Color="#8A95A6"/>
+            <SolidColorBrush x:Key="AppTopBarTextBrush" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="AppTopBarMutedBrush" Color="#B7C6D8"/>
+            <SolidColorBrush x:Key="AppTopActionHoverBackgroundBrush" Color="#5E6A7D"/>
+            <SolidColorBrush x:Key="AppTopActionHoverBorderBrush" Color="#8ABCE8"/>
+            <SolidColorBrush x:Key="AppTopActionPressedBackgroundBrush" Color="#243346"/>
+            <SolidColorBrush x:Key="AppTopActionAccentHoverBorderBrush" Color="#79D7C0"/>
+            <SolidColorBrush x:Key="AppToolbarButtonBackgroundBrush" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="AppToolbarButtonForegroundBrush" Color="#162235"/>
+            <SolidColorBrush x:Key="AppPrimaryBrush" Color="#226C5D"/>
+            <SolidColorBrush x:Key="AppAccentBrush" Color="#2E7D6A"/>
+            <SolidColorBrush x:Key="AppAccentHoverBrush" Color="#5E6A7D"/>
+            <SolidColorBrush x:Key="AppAccentPressedBrush" Color="#1E5D50"/>
+            <SolidColorBrush x:Key="AppDangerBrush" Color="#B43B4A"/>
+            <SolidColorBrush x:Key="AppErrorBrush" Color="#C62828"/>
+            <SolidColorBrush x:Key="AppOnAccentBrush" Color="#FFFFFF"/>
         </ResourceDictionary>
     </Application.Resources>
 

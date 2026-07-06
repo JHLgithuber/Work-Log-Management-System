@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.X11;
 using WorkLogManagementSystem_UI;
+using WorkLogManagementSystem_UI.Services;
 
 namespace WorkLogManagementSystem_UI.Desktop;
 
@@ -14,6 +15,7 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        PlatformCredentialStore.Configure(() => new DesktopCredentialStore());
         ConfigureLinuxInputMethod();
         LinuxIbusKeycodePatch.Apply();
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);

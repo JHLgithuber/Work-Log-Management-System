@@ -1,10 +1,15 @@
 using System;
+using System.ComponentModel;
 using System.Globalization;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Styling;
+using Avalonia.VisualTree;
+using WorkLogManagementSystem_UI.Services;
+using WorkLogManagementSystem_UI.ViewModels;
 
 namespace WorkLogManagementSystem_UI.Views;
 
@@ -21,6 +26,7 @@ public partial class MainView : UserControl
     private const int TaskPaneAnimationDurationMilliseconds = 180;
     private bool _isNarrowLayout;
     private bool _isTaskPaneOpen = true;
+    private MainViewModel? _subscribedViewModel;
 
     public MainView()
     {
@@ -29,7 +35,63 @@ public partial class MainView : UserControl
         TaskPaneOverlay.SetValue(Panel.ZIndexProperty, 1);
         TaskListPanel.SetValue(Panel.ZIndexProperty, 2);
         SizeChanged += OnSizeChanged;
+        DataContextChanged += OnDataContextChanged;
+        AppSettingsService.ThemeResourcesChanged += OnThemeResourcesChanged;
         UpdateResponsiveLayout(Bounds.Width);
+    }
+
+    private void OnThemeResourcesChanged(object? sender, EventArgs eventArgs)
+    {
+        InvalidateMeasure();
+        InvalidateVisualTree(this);
+    }
+
+    private void OnDataContextChanged(object? sender, EventArgs eventArgs)
+    {
+        if (_subscribedViewModel is not null)
+        {
+            _subscribedViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            _subscribedViewModel = null;
+        }
+
+        if (DataContext is MainViewModel viewModel)
+        {
+            viewModel.PropertyChanged += OnViewModelPropertyChanged;
+            _subscribedViewModel = viewModel;
+            ApplyRuntimeThemeVariant(viewModel.ActiveThemeVariant);
+        }
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
+    {
+        if (eventArgs.PropertyName == nameof(MainViewModel.ActiveThemeVariant) &&
+            sender is MainViewModel viewModel)
+        {
+            ApplyRuntimeThemeVariant(viewModel.ActiveThemeVariant);
+        }
+    }
+
+    private void ApplyRuntimeThemeVariant(ThemeVariant themeVariant)
+    {
+        RootThemeScope.RequestedThemeVariant = themeVariant;
+        TopLevel? topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel is not null)
+        {
+            topLevel.RequestedThemeVariant = themeVariant;
+        }
+
+        InvalidateMeasure();
+        InvalidateVisualTree(this);
+    }
+
+    private static void InvalidateVisualTree(Visual visual)
+    {
+        visual.InvalidateVisual();
+
+        foreach (Visual child in visual.GetVisualChildren())
+        {
+            InvalidateVisualTree(child);
+        }
     }
 
     private void OnSizeChanged(object? sender, SizeChangedEventArgs eventArgs)

@@ -7,4 +7,8 @@ public static class AppThemeMode
     public const string Dark = "Dark";
 }
 
-public sealed record AppSettingsResult(string ApiBaseUrl, string ThemeMode);
+public sealed record AppSettingsResult(
+    string ApiBaseUrl,
+    string ThemeMode,
+    string AccessToken = "",
+    string Username = "");
