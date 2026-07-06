@@ -656,6 +656,11 @@
           <CheckBox Content="계정정보 저장"
                     IsChecked="{Binding RememberCredentials, Mode=TwoWay}"
                     IsEnabled="{Binding IsCredentialSaveSupported}"/>
+          <TextBlock Text="{Binding CredentialSaveUnsupportedReason}"
+                     Foreground="{DynamicResource AppTextMutedBrush}"
+                     FontSize="12"
+                     TextWrapping="Wrap"
+                     IsVisible="{Binding IsCredentialSaveUnsupported}"/>
 
           <TextBlock Text="{Binding ConnectionGateErrorMessage}"
                      Foreground="{DynamicResource AppErrorBrush}"

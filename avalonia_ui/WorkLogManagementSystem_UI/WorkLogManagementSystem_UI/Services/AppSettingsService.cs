@@ -17,6 +17,7 @@ public sealed class AppSettingsService
     private const string SettingsDirectoryName = "WorkLogManagementSystem_UI";
     private const string SettingsFileName = "settings.json";
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    private static string _currentThemeMode = AppThemeMode.System;
     public static event EventHandler? ThemeResourcesChanged;
 
     public async Task<AppSettingsResult?> ConfigureSettingsAsync(
@@ -42,6 +43,7 @@ public sealed class AppSettingsService
             return;
         }
 
+        _currentThemeMode = IsValidThemeMode(themeMode) ? themeMode : AppThemeMode.System;
         ThemeVariant themeVariant = themeMode switch
         {
             AppThemeMode.Light => ThemeVariant.Light,
@@ -75,14 +77,14 @@ public sealed class AppSettingsService
             return;
         }
 
-        ThemeVariant requestedThemeVariant = application.RequestedThemeVariant ?? ThemeVariant.Default;
-        if (requestedThemeVariant != ThemeVariant.Default)
+        if (_currentThemeMode != AppThemeMode.System)
         {
             return;
         }
 
         ApplyThemeBrushResources(application, actualThemeVariant);
-        ApplyThemeVariantToTopLevels(ThemeVariant.Default);
+        application.RequestedThemeVariant = actualThemeVariant;
+        ApplyThemeVariantToTopLevels(actualThemeVariant);
         ThemeResourcesChanged?.Invoke(null, EventArgs.Empty);
     }
 

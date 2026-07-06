@@ -99,6 +99,7 @@ public partial class MainViewModel : ViewModelBase
     public bool HasExportRangeErrorMessage => !string.IsNullOrWhiteSpace(ExportRangeErrorMessage);
     public bool CanEditExistingTask => IsEditorEnabled && !IsNewTask && SelectedTask is not null;
     public bool IsCredentialSaveSupported => _credentialStore.IsSaveSupported;
+    public bool IsCredentialSaveUnsupported => !_credentialStore.IsSaveSupported;
     public string CredentialSaveUnsupportedReason => _credentialStore.UnsupportedReason;
 
     partial void OnSelectedDateChanged(DateTime? value)

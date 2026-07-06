@@ -41,6 +41,11 @@ public static class AppDefaultsService
     private static Dictionary<string, string> LoadDotEnvValues()
     {
         Dictionary<string, string> values = new(StringComparer.OrdinalIgnoreCase);
+        if (OperatingSystem.IsBrowser())
+        {
+            return values;
+        }
+
         string? path = FindDotEnvFile();
         if (path is null)
         {
@@ -87,4 +92,3 @@ public static class AppDefaultsService
         return File.Exists(currentDirectoryCandidate) ? currentDirectoryCandidate : null;
     }
 }
-
