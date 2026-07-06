@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Styling;
@@ -15,6 +16,7 @@ public partial class MainViewModel : ViewModelBase
 {
     private static readonly DateTime UnboundedStart = DateTime.MinValue;
     private static readonly DateTime UnboundedEnd = DateTime.MaxValue;
+    private static readonly TimeSpan BackendTimezoneOffset = TimeSpan.FromHours(9);
     private readonly ExportFileService _exportFileService = new();
     private readonly AppSettingsService _settingsService = new();
     private readonly ICredentialStore _credentialStore = PlatformCredentialStore.Create();
@@ -50,6 +52,17 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private bool _settingsUseLightTheme;
     [ObservableProperty] private bool _settingsUseDarkTheme;
     [ObservableProperty] private string _settingsErrorMessage = string.Empty;
+    [ObservableProperty] private bool _isChangePasswordDialogOpen;
+    [ObservableProperty] private string _changePasswordErrorMessage = string.Empty;
+    [ObservableProperty] private string _settingsCurrentPassword = string.Empty;
+    [ObservableProperty] private string _settingsNewPassword = string.Empty;
+    [ObservableProperty] private string _settingsNewPasswordConfirm = string.Empty;
+    [ObservableProperty] private bool _isRegisterUserDialogOpen;
+    [ObservableProperty] private string _registerUserErrorMessage = string.Empty;
+    [ObservableProperty] private string _newUserUsername = string.Empty;
+    [ObservableProperty] private string _newUserDisplayName = string.Empty;
+    [ObservableProperty] private string _newUserPassword = string.Empty;
+    [ObservableProperty] private string _newUserPasswordConfirm = string.Empty;
     [ObservableProperty] private bool _isConnectionErrorDialogOpen;
     [ObservableProperty] private string _connectionErrorMessage = string.Empty;
     [ObservableProperty] private bool _isBackendConnected;
@@ -93,6 +106,8 @@ public partial class MainViewModel : ViewModelBase
     public bool HasEditorParentTitle => !string.IsNullOrWhiteSpace(EditorParentTitle);
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
     public bool HasSettingsErrorMessage => !string.IsNullOrWhiteSpace(SettingsErrorMessage);
+    public bool HasChangePasswordErrorMessage => !string.IsNullOrWhiteSpace(ChangePasswordErrorMessage);
+    public bool HasRegisterUserErrorMessage => !string.IsNullOrWhiteSpace(RegisterUserErrorMessage);
     public bool IsConnectionGateVisible => !IsBackendConnected || !IsAuthenticated;
     public bool IsLoggedInStatusVisible => IsBackendConnected && IsAuthenticated;
     public bool HasConnectionGateErrorMessage => !string.IsNullOrWhiteSpace(ConnectionGateErrorMessage);
@@ -117,6 +132,16 @@ public partial class MainViewModel : ViewModelBase
         }
 
         BeginEdit(value);
+    }
+
+    partial void OnChangePasswordErrorMessageChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasChangePasswordErrorMessage));
+    }
+
+    partial void OnRegisterUserErrorMessageChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasRegisterUserErrorMessage));
     }
 
     partial void OnIsNewTaskChanged(bool value)
@@ -214,7 +239,7 @@ public partial class MainViewModel : ViewModelBase
         {
             using WorkLogApiClient client = CreateAuthenticatedClient();
             IReadOnlyList<TaskDto> loadedTasks = await client.GetTasksAsync(SelectedDate.Value, cancellationToken);
-            Tasks = new ObservableCollection<TaskDto>(loadedTasks);
+            Tasks = new ObservableCollection<TaskDto>(SortTasks(loadedTasks));
             StatusMessage = $"{loadedTasks.Count}개 과업을 불러왔습니다.";
 
             if (SelectedTask is not null && FindTaskById(Tasks, SelectedTask.Id) is TaskDto reloaded)
@@ -380,6 +405,7 @@ public partial class MainViewModel : ViewModelBase
     {
         SettingsApiBaseUrl = ApiBaseUrl;
         SettingsErrorMessage = string.Empty;
+        ClearSettingsAccountFields();
         SetSettingsThemeMode(ThemeMode);
         IsSettingsDialogOpen = true;
     }
@@ -388,8 +414,53 @@ public partial class MainViewModel : ViewModelBase
     private void CancelSettings()
     {
         IsSettingsDialogOpen = false;
+        IsChangePasswordDialogOpen = false;
+        IsRegisterUserDialogOpen = false;
         SettingsErrorMessage = string.Empty;
         ApplyThemePreview(ThemeMode);
+        ClearSettingsAccountFields();
+    }
+
+    [RelayCommand]
+    private void OpenChangePasswordDialog()
+    {
+        ChangePasswordErrorMessage = string.Empty;
+        SettingsCurrentPassword = string.Empty;
+        SettingsNewPassword = string.Empty;
+        SettingsNewPasswordConfirm = string.Empty;
+        IsChangePasswordDialogOpen = true;
+    }
+
+    [RelayCommand]
+    private void CancelChangePassword()
+    {
+        IsChangePasswordDialogOpen = false;
+        ChangePasswordErrorMessage = string.Empty;
+        SettingsCurrentPassword = string.Empty;
+        SettingsNewPassword = string.Empty;
+        SettingsNewPasswordConfirm = string.Empty;
+    }
+
+    [RelayCommand]
+    private void OpenRegisterUserDialog()
+    {
+        RegisterUserErrorMessage = string.Empty;
+        NewUserUsername = string.Empty;
+        NewUserDisplayName = string.Empty;
+        NewUserPassword = string.Empty;
+        NewUserPasswordConfirm = string.Empty;
+        IsRegisterUserDialogOpen = true;
+    }
+
+    [RelayCommand]
+    private void CancelRegisterUser()
+    {
+        IsRegisterUserDialogOpen = false;
+        RegisterUserErrorMessage = string.Empty;
+        NewUserUsername = string.Empty;
+        NewUserDisplayName = string.Empty;
+        NewUserPassword = string.Empty;
+        NewUserPasswordConfirm = string.Empty;
     }
 
     [RelayCommand]
@@ -467,9 +538,99 @@ public partial class MainViewModel : ViewModelBase
         IsAuthenticated = false;
         Tasks = new ObservableCollection<TaskDto>();
         SelectedTask = null;
+        IsSettingsDialogOpen = false;
+        IsChangePasswordDialogOpen = false;
+        IsRegisterUserDialogOpen = false;
         ClearEditor();
+        ClearSettingsAccountFields();
         StatusMessage = "로그아웃됨.";
         await _settingsService.SaveSettingsAsync(CreateSettingsResult(), CancellationToken.None);
+    }
+
+    [RelayCommand]
+    private async Task ChangePasswordAsync()
+    {
+        if (string.IsNullOrWhiteSpace(SettingsCurrentPassword) ||
+            string.IsNullOrWhiteSpace(SettingsNewPassword) ||
+            string.IsNullOrWhiteSpace(SettingsNewPasswordConfirm))
+        {
+            ChangePasswordErrorMessage = "현재 비밀번호와 새 비밀번호를 모두 입력하세요.";
+            return;
+        }
+
+        if (SettingsNewPassword != SettingsNewPasswordConfirm)
+        {
+            ChangePasswordErrorMessage = "새 비밀번호 확인이 일치하지 않습니다.";
+            return;
+        }
+
+        try
+        {
+            using WorkLogApiClient client = CreateAuthenticatedClient();
+            await client.ChangePasswordAsync(
+                new ChangePasswordRequest
+                {
+                    CurrentPassword = SettingsCurrentPassword,
+                    NewPassword = SettingsNewPassword
+                },
+                CancellationToken.None);
+
+            SettingsCurrentPassword = string.Empty;
+            SettingsNewPassword = string.Empty;
+            SettingsNewPasswordConfirm = string.Empty;
+            ChangePasswordErrorMessage = string.Empty;
+            IsChangePasswordDialogOpen = false;
+            StatusMessage = "비밀번호가 변경되었습니다.";
+        }
+        catch (Exception error)
+        {
+            ChangePasswordErrorMessage = $"비밀번호 변경 실패: {error.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private async Task RegisterUserAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewUserUsername) ||
+            string.IsNullOrWhiteSpace(NewUserPassword) ||
+            string.IsNullOrWhiteSpace(NewUserPasswordConfirm))
+        {
+            RegisterUserErrorMessage = "추가할 사용자의 아이디와 비밀번호를 입력하세요.";
+            return;
+        }
+
+        if (NewUserPassword != NewUserPasswordConfirm)
+        {
+            RegisterUserErrorMessage = "추가할 사용자의 비밀번호 확인이 일치하지 않습니다.";
+            return;
+        }
+
+        try
+        {
+            using WorkLogApiClient client = CreateAuthenticatedClient();
+            UserDto user = await client.RegisterAsync(
+                new RegisterRequest
+                {
+                    Username = NewUserUsername.Trim(),
+                    Password = NewUserPassword,
+                    DisplayName = string.IsNullOrWhiteSpace(NewUserDisplayName)
+                        ? null
+                        : NewUserDisplayName.Trim()
+                },
+                CancellationToken.None);
+
+            NewUserUsername = string.Empty;
+            NewUserDisplayName = string.Empty;
+            NewUserPassword = string.Empty;
+            NewUserPasswordConfirm = string.Empty;
+            RegisterUserErrorMessage = string.Empty;
+            IsRegisterUserDialogOpen = false;
+            StatusMessage = $"사용자 추가됨: {user.Username}";
+        }
+        catch (Exception error)
+        {
+            RegisterUserErrorMessage = $"사용자 추가 실패: {error.Message}";
+        }
     }
 
     [RelayCommand]
@@ -810,6 +971,19 @@ public partial class MainViewModel : ViewModelBase
         return new AppSettingsResult(ApiBaseUrl, ThemeMode, AccessToken, CurrentUsername);
     }
 
+    private void ClearSettingsAccountFields()
+    {
+        ChangePasswordErrorMessage = string.Empty;
+        SettingsCurrentPassword = string.Empty;
+        SettingsNewPassword = string.Empty;
+        SettingsNewPasswordConfirm = string.Empty;
+        RegisterUserErrorMessage = string.Empty;
+        NewUserUsername = string.Empty;
+        NewUserDisplayName = string.Empty;
+        NewUserPassword = string.Empty;
+        NewUserPasswordConfirm = string.Empty;
+    }
+
     private async Task LoadStoredCredentialsAsync()
     {
         if (!_credentialStore.IsSaveSupported)
@@ -902,6 +1076,19 @@ public partial class MainViewModel : ViewModelBase
         return null;
     }
 
+    private static IReadOnlyList<TaskDto> SortTasks(IEnumerable<TaskDto> tasks)
+    {
+        return tasks
+            .OrderBy(task => task.DueAt)
+            .ThenBy(task => task.Priority)
+            .Select(task =>
+            {
+                task.Children = new ObservableCollection<TaskDto>(SortTasks(task.Children));
+                return task;
+            })
+            .ToArray();
+    }
+
     private string ResolveParentTitle(int? parentId)
     {
         if (parentId is null)
@@ -942,7 +1129,7 @@ public partial class MainViewModel : ViewModelBase
 
         if (date.Year >= 9999)
         {
-            return DateTimeOffset.MaxValue;
+            return new DateTimeOffset(9999, 12, 31, 23, 59, 59, BackendTimezoneOffset);
         }
 
         return new DateTimeOffset(DateTime.SpecifyKind(date, DateTimeKind.Local));

@@ -56,6 +56,10 @@ class DateBounds:
 
     @classmethod
     def normalize(cls, value: datetime) -> datetime:
+        if value.year <= cls.MINIMUM.year:
+            return cls.MINIMUM
+        if value.year >= cls.MAXIMUM.year:
+            return cls.MAXIMUM
         if value.tzinfo is None:
             return value.replace(tzinfo=cls.TIMEZONE)
         return value.astimezone(cls.TIMEZONE)

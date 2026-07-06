@@ -130,6 +130,27 @@ public sealed class LoginRequest
     public string Password { get; set; } = string.Empty;
 }
 
+public sealed class RegisterRequest
+{
+    [JsonPropertyName("username")]
+    public string Username { get; set; } = string.Empty;
+
+    [JsonPropertyName("password")]
+    public string Password { get; set; } = string.Empty;
+
+    [JsonPropertyName("display_name")]
+    public string? DisplayName { get; set; }
+}
+
+public sealed class ChangePasswordRequest
+{
+    [JsonPropertyName("current_password")]
+    public string CurrentPassword { get; set; } = string.Empty;
+
+    [JsonPropertyName("new_password")]
+    public string NewPassword { get; set; } = string.Empty;
+}
+
 public sealed class TokenResponse
 {
     [JsonPropertyName("access_token")]

@@ -59,6 +59,24 @@ class AuthService:
         user = self.authenticate(username, password)
         return TokenPair(access_token=create_access_token(user.username, user.id), token_type="bearer")
 
+    def change_password(self, username: str, current_password: str, new_password: str) -> None:
+        normalized_username = self._normalize_username(username)
+        self._validate_password(new_password)
+        if self._is_admin_username(normalized_username):
+            if current_password != settings.admin_password:
+                raise AuthenticationError("Invalid current password.")
+            raise AuthenticationError("The built-in admin password is configured by environment variables.")
+
+        now: datetime = DateBounds.now()
+        with self._database.session() as session:
+            user = session.scalar(select(User).where(User.username == normalized_username))
+            if user is None or not verify_password(current_password, user.password_hash):
+                raise AuthenticationError("Invalid current password.")
+
+            user.password_hash = hash_password(new_password)
+            user.updated_at = now
+            session.commit()
+
     def authenticate(self, username: str, password: str) -> AuthenticatedUser:
         normalized_username = self._normalize_username(username)
         if self._is_admin_credentials(normalized_username, password):

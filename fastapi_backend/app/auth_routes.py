@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, Response, status
 
 from app.auth import AuthService, AuthenticatedUser, UserAlreadyExistsError
-from app.auth_schemas import LoginRequest, RegisterRequest, TokenResponse, UserResponse
+from app.auth_schemas import ChangePasswordRequest, LoginRequest, RegisterRequest, TokenResponse, UserResponse
 from app.database import Database
 from app.security import AuthenticationError, decode_access_token
 
@@ -42,6 +42,7 @@ class AuthRouter:
         self.router.add_api_route("/register", self.register, methods=["POST"], response_model=UserResponse, status_code=201)
         self.router.add_api_route("/login", self.login, methods=["POST"], response_model=TokenResponse)
         self.router.add_api_route("/me", self.me, methods=["GET"], response_model=UserResponse)
+        self.router.add_api_route("/password", self.change_password, methods=["PUT"], status_code=204)
 
     def register(self, request: RegisterRequest, authorization: AuthorizationHeader = None) -> UserResponse:
         self.current_user(authorization)
@@ -61,3 +62,11 @@ class AuthRouter:
 
     def me(self, authorization: AuthorizationHeader = None) -> UserResponse:
         return UserResponse.from_domain(self.current_user(authorization))
+
+    def change_password(self, request: ChangePasswordRequest, authorization: AuthorizationHeader = None) -> Response:
+        user = self.current_user(authorization)
+        try:
+            self._service.change_password(user.username, request.current_password, request.new_password)
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except AuthenticationError as error:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error

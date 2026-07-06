@@ -26,6 +26,7 @@ public partial class MainView : UserControl
     private const int TaskPaneAnimationDurationMilliseconds = 180;
     private bool _isNarrowLayout;
     private bool _isTaskPaneOpen = true;
+    private bool _isTaskPaneExpanded;
     private MainViewModel? _subscribedViewModel;
 
     public MainView()
@@ -34,6 +35,7 @@ public partial class MainView : UserControl
         EditorPanel.SetValue(Panel.ZIndexProperty, 0);
         TaskPaneOverlay.SetValue(Panel.ZIndexProperty, 1);
         TaskListPanel.SetValue(Panel.ZIndexProperty, 2);
+        ExpandTaskPaneButton.Click += OnExpandTaskPaneClicked;
         SizeChanged += OnSizeChanged;
         DataContextChanged += OnDataContextChanged;
         AppSettingsService.ThemeResourcesChanged += OnThemeResourcesChanged;
@@ -124,17 +126,26 @@ public partial class MainView : UserControl
             ResponsiveShell.ColumnDefinitions = new ColumnDefinitions("*");
             ResponsiveShell.RowDefinitions = new RowDefinitions("*");
             ResponsiveShell.Margin = new Avalonia.Thickness(0);
+            Grid.SetColumnSpan(TaskPaneOverlay, 1);
             Grid.SetColumn(TaskListPanel, 0);
             Grid.SetRow(TaskListPanel, 0);
+            Grid.SetColumnSpan(TaskListPanel, 1);
             Grid.SetColumn(EditorPanel, 0);
             Grid.SetRow(EditorPanel, 0);
-            TaskListPanel.Width = Math.Max(200, Math.Min(PreferredTaskPaneWidth, width - 12));
+            TaskListPanel.Width = _isTaskPaneExpanded
+                ? double.NaN
+                : Math.Max(200, Math.Min(PreferredTaskPaneWidth, width - 12));
             TaskListPanel.Margin = new Avalonia.Thickness(0);
-            TaskListPanel.CornerRadius = new CornerRadius(0, 8, 8, 0);
-            TaskListPanel.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left;
+            TaskListPanel.CornerRadius = _isTaskPaneExpanded ? new CornerRadius(0) : new CornerRadius(0, 8, 8, 0);
+            TaskListPanel.HorizontalAlignment = _isTaskPaneExpanded
+                ? Avalonia.Layout.HorizontalAlignment.Stretch
+                : Avalonia.Layout.HorizontalAlignment.Left;
             TaskListPanel.IsVisible = _isTaskPaneOpen;
-            TaskListPanel.RenderTransform = new TranslateTransform(_isTaskPaneOpen ? 0 : -TaskListPanel.Width, 0);
-            TaskPaneOverlay.IsVisible = _isTaskPaneOpen;
+            TaskListPanel.RenderTransform = _isTaskPaneExpanded
+                ? new TranslateTransform(0, 0)
+                : new TranslateTransform(_isTaskPaneOpen ? 0 : -TaskListPanel.Width, 0);
+            TaskPaneOverlay.IsVisible = _isTaskPaneOpen && !_isTaskPaneExpanded;
+            EditorPanel.IsVisible = !_isTaskPaneExpanded;
             EditorPanel.Margin = new Avalonia.Thickness(shellMargin);
             TaskPaneToggleButton.IsVisible = true;
             TaskPaneCloseButton.IsVisible = true;
@@ -146,13 +157,16 @@ public partial class MainView : UserControl
         {
             double paneWidth = Math.Max(MinimumTaskPaneWidth, Math.Min(PreferredTaskPaneWidth, width * 0.32));
             double editorContentWidth = width - 32 - 16 - paneWidth - 32;
-            ResponsiveShell.ColumnDefinitions = new ColumnDefinitions(
-                $"{paneWidth.ToString(CultureInfo.InvariantCulture)},*");
+            ResponsiveShell.ColumnDefinitions = _isTaskPaneExpanded
+                ? new ColumnDefinitions("*")
+                : new ColumnDefinitions($"{paneWidth.ToString(CultureInfo.InvariantCulture)},*");
             ResponsiveShell.RowDefinitions = new RowDefinitions("*");
             ResponsiveShell.Margin = new Avalonia.Thickness(16);
+            Grid.SetColumnSpan(TaskPaneOverlay, _isTaskPaneExpanded ? 1 : 2);
             Grid.SetColumn(TaskListPanel, 0);
             Grid.SetRow(TaskListPanel, 0);
-            Grid.SetColumn(EditorPanel, 1);
+            Grid.SetColumnSpan(TaskListPanel, 1);
+            Grid.SetColumn(EditorPanel, _isTaskPaneExpanded ? 0 : 1);
             Grid.SetRow(EditorPanel, 0);
             TaskListPanel.Width = double.NaN;
             TaskListPanel.Margin = new Avalonia.Thickness(0);
@@ -161,6 +175,7 @@ public partial class MainView : UserControl
             TaskListPanel.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch;
             TaskListPanel.IsVisible = true;
             TaskPaneOverlay.IsVisible = false;
+            EditorPanel.IsVisible = !_isTaskPaneExpanded;
             EditorPanel.Margin = new Avalonia.Thickness(0);
             TaskPaneToggleButton.IsVisible = false;
             TaskPaneCloseButton.IsVisible = false;
@@ -169,6 +184,17 @@ public partial class MainView : UserControl
             TaskListDatePicker.MinWidth = 170;
             ApplyEditorDateLayout(editorContentWidth);
         }
+    }
+
+    private void OnExpandTaskPaneClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs eventArgs)
+    {
+        _isTaskPaneExpanded = !_isTaskPaneExpanded;
+        if (_isTaskPaneExpanded)
+        {
+            _isTaskPaneOpen = true;
+        }
+
+        UpdateResponsiveLayout(Bounds.Width);
     }
 
     private void ApplyRegularToolbar()
@@ -347,8 +373,14 @@ public partial class MainView : UserControl
 
     private async Task CloseTaskPaneAsync()
     {
+        if (_isTaskPaneExpanded)
+        {
+            _isTaskPaneExpanded = false;
+        }
+
         if (!_isNarrowLayout || !_isTaskPaneOpen)
         {
+            UpdateResponsiveLayout(Bounds.Width);
             return;
         }
 

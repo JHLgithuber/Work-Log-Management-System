@@ -52,6 +52,20 @@ public sealed class WorkLogApiClient : IDisposable
         return user ?? throw new InvalidOperationException("The backend returned an empty user response.");
     }
 
+    public async Task<UserDto> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken)
+    {
+        using HttpResponseMessage response = await _httpClient.PostAsJsonAsync("/auth/register", request, JsonOptions, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        UserDto? user = await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions, cancellationToken);
+        return user ?? throw new InvalidOperationException("The backend returned an empty user response.");
+    }
+
+    public async Task ChangePasswordAsync(ChangePasswordRequest request, CancellationToken cancellationToken)
+    {
+        using HttpResponseMessage response = await _httpClient.PutAsJsonAsync("/auth/password", request, JsonOptions, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+    }
+
     public async Task<IReadOnlyList<TaskDto>> GetTasksAsync(DateTime targetDate, CancellationToken cancellationToken)
     {
         string dateValue = Uri.EscapeDataString(targetDate.ToString("yyyy-MM-dd"));
