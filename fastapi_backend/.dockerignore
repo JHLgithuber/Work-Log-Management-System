@@ -20,3 +20,4 @@ __pycache__
 
 Dockerfile
 test_main.http
+*.tar
