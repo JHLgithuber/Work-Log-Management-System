@@ -63,7 +63,7 @@ class AuthService:
         normalized_username = self._normalize_username(username)
         self._validate_password(new_password)
         if self._is_admin_username(normalized_username):
-            if current_password != settings.admin_password:
+            if settings.admin_password is None or current_password != settings.admin_password:
                 raise AuthenticationError("Invalid current password.")
             raise AuthenticationError("The built-in admin password is configured by environment variables.")
 
@@ -113,12 +113,20 @@ class AuthService:
         return self._is_admin_username(username) and password == settings.admin_password
 
     def _is_admin_username(self, username: str) -> bool:
-        return username == settings.admin_username
+        return self._is_admin_enabled() and username == settings.admin_username
+
+    def _is_admin_enabled(self) -> bool:
+        return settings.admin_username is not None and settings.admin_password is not None
 
     def _admin_user(self) -> AuthenticatedUser:
+        if not self._is_admin_enabled():
+            raise AuthenticationError("The built-in admin user is disabled.")
+        admin_username = settings.admin_username
+        if admin_username is None:
+            raise AuthenticationError("The built-in admin user is disabled.")
         return AuthenticatedUser(
             id=None,
-            username=settings.admin_username,
-            display_name=settings.admin_username,
+            username=admin_username,
+            display_name=admin_username,
             is_admin=True,
         )

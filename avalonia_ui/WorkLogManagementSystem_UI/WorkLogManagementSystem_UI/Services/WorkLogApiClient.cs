@@ -169,7 +169,12 @@ public sealed class WorkLogApiClient : IDisposable
 
         string body = await response.Content.ReadAsStringAsync(cancellationToken);
         string message = TryExtractDetail(body) ?? body;
-        throw new HttpRequestException($"{(int)response.StatusCode} {response.ReasonPhrase}: {message}");
+        throw new ApiRequestException(
+            response.StatusCode,
+            response.ReasonPhrase,
+            body,
+            response.Content.Headers.ContentType?.MediaType,
+            $"{(int)response.StatusCode} {response.ReasonPhrase}: {message}");
     }
 
     private static string? TryExtractDetail(string body)

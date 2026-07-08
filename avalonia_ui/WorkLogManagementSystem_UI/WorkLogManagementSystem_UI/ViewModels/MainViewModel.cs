@@ -65,6 +65,8 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string _newUserPasswordConfirm = string.Empty;
     [ObservableProperty] private bool _isConnectionErrorDialogOpen;
     [ObservableProperty] private string _connectionErrorMessage = string.Empty;
+    [ObservableProperty] private string _connectionErrorHtml = string.Empty;
+    [ObservableProperty] private bool _isConnectionErrorHtml;
     [ObservableProperty] private bool _isBackendConnected;
     [ObservableProperty] private bool _isConnectionBusy;
     [ObservableProperty] private string _connectionGateApiBaseUrl = string.Empty;
@@ -111,6 +113,8 @@ public partial class MainViewModel : ViewModelBase
     public bool IsConnectionGateVisible => !IsBackendConnected || !IsAuthenticated;
     public bool IsLoggedInStatusVisible => IsBackendConnected && IsAuthenticated;
     public bool HasConnectionGateErrorMessage => !string.IsNullOrWhiteSpace(ConnectionGateErrorMessage);
+    public bool IsConnectionErrorTextVisible => IsConnectionErrorDialogOpen && !IsConnectionErrorHtml;
+    public bool IsConnectionErrorHtmlVisible => IsConnectionErrorDialogOpen && IsConnectionErrorHtml;
     public bool HasExportRangeErrorMessage => !string.IsNullOrWhiteSpace(ExportRangeErrorMessage);
     public bool CanEditExistingTask => IsEditorEnabled && !IsNewTask && SelectedTask is not null;
     public bool IsCredentialSaveSupported => _credentialStore.IsSaveSupported;
@@ -192,6 +196,18 @@ public partial class MainViewModel : ViewModelBase
     partial void OnConnectionGateErrorMessageChanged(string value)
     {
         OnPropertyChanged(nameof(HasConnectionGateErrorMessage));
+    }
+
+    partial void OnIsConnectionErrorDialogOpenChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsConnectionErrorTextVisible));
+        OnPropertyChanged(nameof(IsConnectionErrorHtmlVisible));
+    }
+
+    partial void OnIsConnectionErrorHtmlChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsConnectionErrorTextVisible));
+        OnPropertyChanged(nameof(IsConnectionErrorHtmlVisible));
     }
 
     partial void OnSettingsUseSystemThemeChanged(bool value)
@@ -468,6 +484,8 @@ public partial class MainViewModel : ViewModelBase
     {
         IsConnectionErrorDialogOpen = false;
         ConnectionErrorMessage = string.Empty;
+        ConnectionErrorHtml = string.Empty;
+        IsConnectionErrorHtml = false;
     }
 
     [RelayCommand]
@@ -521,7 +539,8 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception error)
         {
             IsAuthenticated = false;
-            ConnectionGateErrorMessage = $"로그인 실패: {error.Message}";
+            ShowConnectionErrorDialogIfHtml(error, "로그인 실패");
+            ConnectionGateErrorMessage = CreateConnectionGateErrorMessage(error, "로그인 실패");
             StatusMessage = "로그인 실패.";
         }
         finally
@@ -666,8 +685,7 @@ public partial class MainViewModel : ViewModelBase
         }
         catch (Exception error)
         {
-            ConnectionErrorMessage = $"백엔드 연결 확인에 실패했습니다.\n{error.Message}";
-            IsConnectionErrorDialogOpen = true;
+            ShowConnectionErrorDialog(error, "백엔드 연결 확인에 실패했습니다.");
             SettingsErrorMessage = "연결 확인에 실패했습니다.";
             StatusMessage = "설정 저장 실패.";
         }
@@ -737,7 +755,8 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception error)
         {
             IsBackendConnected = false;
-            ConnectionGateErrorMessage = $"연결 확인 실패: {error.Message}";
+            ShowConnectionErrorDialogIfHtml(error, "연결 확인 실패");
+            ConnectionGateErrorMessage = CreateConnectionGateErrorMessage(error, "연결 확인 실패");
             StatusMessage = "백엔드 연결 실패.";
         }
         finally
@@ -969,6 +988,40 @@ public partial class MainViewModel : ViewModelBase
     private AppSettingsResult CreateSettingsResult()
     {
         return new AppSettingsResult(ApiBaseUrl, ThemeMode, AccessToken, CurrentUsername);
+    }
+
+    private void ShowConnectionErrorDialog(Exception error, string title)
+    {
+        ConnectionErrorMessage = $"{title}\n{error.Message}";
+        ConnectionErrorHtml = string.Empty;
+        IsConnectionErrorHtml = false;
+
+        if (error is ApiRequestException { IsHtmlResponse: true } apiError)
+        {
+            ConnectionErrorMessage = $"{title}\n{(int)apiError.StatusCode} {apiError.ReasonPhrase}";
+            ConnectionErrorHtml = apiError.ResponseBody;
+            IsConnectionErrorHtml = true;
+        }
+
+        IsConnectionErrorDialogOpen = true;
+    }
+
+    private void ShowConnectionErrorDialogIfHtml(Exception error, string title)
+    {
+        if (error is ApiRequestException { IsHtmlResponse: true })
+        {
+            ShowConnectionErrorDialog(error, title);
+        }
+    }
+
+    private static string CreateConnectionGateErrorMessage(Exception error, string title)
+    {
+        if (error is ApiRequestException { IsHtmlResponse: true })
+        {
+            return $"{title}: 서버가 HTML 오류 페이지를 반환했습니다. 연결 실패 다이얼로그를 확인하세요.";
+        }
+
+        return $"{title}: {error.Message}";
     }
 
     private void ClearSettingsAccountFields()

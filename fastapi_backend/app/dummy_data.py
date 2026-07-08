@@ -38,6 +38,8 @@ class SeedResult:
 class DummyDataSeeder:
     def __init__(self, service: TaskService) -> None:
         self._service: TaskService = service
+        if settings.admin_username is None or settings.admin_password is None:
+            raise RuntimeError("Dummy data seeding requires enabled built-in admin credentials.")
         self._username: str = settings.admin_username
 
     def seed(self) -> SeedResult:

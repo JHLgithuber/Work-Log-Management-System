@@ -188,7 +188,11 @@ class TaskRepository:
 
     def _resolve_user_id(self, session: Session, username: str) -> int | None:
         normalized_username: str = username.strip()
-        if normalized_username == settings.admin_username:
+        if (
+            settings.admin_username is not None
+            and settings.admin_password is not None
+            and normalized_username == settings.admin_username
+        ):
             return None
 
         user: User | None = session.scalar(select(User).where(User.username == normalized_username))

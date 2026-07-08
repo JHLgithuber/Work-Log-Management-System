@@ -728,7 +728,7 @@
 
     <Border Grid.RowSpan="2"
             Classes="modal-scrim"
-            ZIndex="22"
+            ZIndex="40"
             IsVisible="{Binding IsConnectionErrorDialogOpen}">
       <Border Classes="modal-card"
               MaxWidth="520"
@@ -743,14 +743,29 @@
           <ScrollViewer Grid.Row="1"
                         MaxHeight="260"
                         HorizontalScrollBarVisibility="Disabled"
-                        VerticalScrollBarVisibility="Auto">
+                        VerticalScrollBarVisibility="Auto"
+                        IsVisible="{Binding IsConnectionErrorTextVisible}">
             <TextBlock Text="{Binding ConnectionErrorMessage}"
                        Foreground="{DynamicResource AppTextSecondaryBrush}"
                        TextWrapping="Wrap"/>
           </ScrollViewer>
+          <ScrollViewer Grid.Row="1"
+                        MaxHeight="260"
+                        HorizontalScrollBarVisibility="Auto"
+                        VerticalScrollBarVisibility="Auto"
+                        IsVisible="{Binding IsConnectionErrorHtmlVisible}">
+            <TextBox Text="{Binding ConnectionErrorHtml}"
+                     IsReadOnly="True"
+                     AcceptsReturn="True"
+                     TextWrapping="NoWrap"/>
+          </ScrollViewer>
           <StackPanel Orientation="Horizontal"
                       Grid.Row="2"
-                      HorizontalAlignment="Right">
+                      HorizontalAlignment="Right"
+                      Spacing="8">
+            <Button Content="브라우저로 열기"
+                    Click="OnOpenConnectionErrorHtmlClicked"
+                    IsVisible="{Binding IsConnectionErrorHtmlVisible}"/>
             <Button Classes="primary"
                     Content="확인"
                     Command="{Binding DismissConnectionErrorCommand}"/>

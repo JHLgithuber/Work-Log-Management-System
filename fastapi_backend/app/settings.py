@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,8 +19,8 @@ class AppSettings:
     cors_origins: list[str]
     cors_allow_credentials: bool
     database_url: str | None
-    admin_username: str
-    admin_password: str
+    admin_username: str | None
+    admin_password: str | None
     jwt_secret_key: str
     jwt_access_token_expire_minutes: int
 
@@ -31,9 +32,9 @@ class AppSettings:
             cors_origins=_list_env("WORKLOG_CORS_ORIGINS", ["*"]),
             cors_allow_credentials=_bool_env("WORKLOG_CORS_ALLOW_CREDENTIALS", True),
             database_url=_optional_string_env("WORKLOG_DATABASE_URL"),
-            admin_username=_string_env("WORKLOG_ADMIN_USERNAME", "admin"),
-            admin_password=_string_env("WORKLOG_ADMIN_PASSWORD", "admin"),
-            jwt_secret_key=_string_env("WORKLOG_JWT_SECRET_KEY", "change-this-secret"),
+            admin_username=_optional_string_env("WORKLOG_ADMIN_USERNAME"),
+            admin_password=_optional_string_env("WORKLOG_ADMIN_PASSWORD"),
+            jwt_secret_key=_string_env("WORKLOG_JWT_SECRET_KEY", secrets.token_urlsafe(32)),
             jwt_access_token_expire_minutes=_int_env("WORKLOG_JWT_ACCESS_TOKEN_EXPIRE_MINUTES", 1440),
         )
 

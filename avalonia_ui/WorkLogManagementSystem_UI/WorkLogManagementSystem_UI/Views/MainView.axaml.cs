@@ -71,6 +71,7 @@ public partial class MainView : UserControl
         {
             ApplyRuntimeThemeVariant(viewModel.ActiveThemeVariant);
         }
+
     }
 
     private void ApplyRuntimeThemeVariant(ThemeVariant themeVariant)
@@ -357,6 +358,30 @@ public partial class MainView : UserControl
     private async void OnTaskPaneMenuActionClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs eventArgs)
     {
         await CloseTaskPaneAsync();
+    }
+
+    private async void OnOpenConnectionErrorHtmlClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs eventArgs)
+    {
+        if (DataContext is not MainViewModel viewModel ||
+            string.IsNullOrWhiteSpace(viewModel.ConnectionErrorHtml))
+        {
+            return;
+        }
+
+        try
+        {
+            string dataUri = "data:text/html;charset=utf-8," + Uri.EscapeDataString(viewModel.ConnectionErrorHtml);
+            TopLevel? topLevel = TopLevel.GetTopLevel(this);
+            if (topLevel?.Launcher is not null)
+            {
+                await topLevel.Launcher.LaunchUriAsync(new Uri(dataUri));
+            }
+        }
+        catch (Exception error)
+        {
+            viewModel.ConnectionErrorMessage = $"HTML 오류 화면을 브라우저로 열지 못했습니다.\n{error.Message}\n\n{viewModel.ConnectionErrorHtml}";
+            viewModel.IsConnectionErrorHtml = false;
+        }
     }
 
     private async Task OpenTaskPaneAsync()
