@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from app.domain import DateBounds, Task, TaskCreate, TaskUpdate, WorkEntry, WorkEntryUpsert
+from app.domain import DailyNote, DailyNoteUpsert, DateBounds, Task, TaskCreate, TaskUpdate, WorkEntry, WorkEntryUpsert
 from app.repository import TaskRepository
 
 
@@ -46,6 +46,15 @@ class TaskService:
 
     def list_all_tasks(self, username: str) -> list[Task]:
         return self._repository.list_all(username)
+
+    def get_daily_note(self, username: str, note_date: date) -> DailyNote:
+        return self._repository.get_daily_note(username, note_date)
+
+    def upsert_daily_note(self, username: str, command: DailyNoteUpsert) -> DailyNote:
+        return self._repository.upsert_daily_note(username, command)
+
+    def list_daily_notes(self, username: str, start_date: date, end_date: date) -> list[DailyNote]:
+        return self._repository.list_daily_notes(username, start_date, end_date)
 
     def _validate_dates(self, start_at: datetime, due_at: datetime, actual_end_at: datetime | None) -> None:
         normalized_start: datetime = DateBounds.start_of_day(start_at)

@@ -10,7 +10,14 @@ from app.database import Database
 from app.domain import DateBounds
 from app.excel_exporter import NoExportableSheetsError, TaskExcelExporter
 from app.repository import InvalidTaskHierarchyError, TaskNotFoundError, TaskRepository
-from app.schemas import TaskResponse, TaskWriteRequest, WorkEntryResponse, WorkEntryWriteRequest
+from app.schemas import (
+    DailyNoteResponse,
+    DailyNoteWriteRequest,
+    TaskResponse,
+    TaskWriteRequest,
+    WorkEntryResponse,
+    WorkEntryWriteRequest,
+)
 from app.security import AuthenticationError, decode_access_token
 from app.service import TaskService, TaskValidationError
 
@@ -31,6 +38,18 @@ class TaskRouter:
         self.router.add_api_route("", self.list_tasks, methods=["GET"], response_model=list[TaskResponse])
         self.router.add_api_route("", self.create_task, methods=["POST"], response_model=TaskResponse, status_code=201)
         self.router.add_api_route("/export.xlsx", self.export_tasks, methods=["GET"])
+        self.router.add_api_route(
+            "/daily-notes/{note_date}",
+            self.get_daily_note,
+            methods=["GET"],
+            response_model=DailyNoteResponse,
+        )
+        self.router.add_api_route(
+            "/daily-notes/{note_date}",
+            self.upsert_daily_note,
+            methods=["PUT"],
+            response_model=DailyNoteResponse,
+        )
         self.router.add_api_route(
             "/{task_id}/entries/{entry_date}",
             self.get_work_entry,
@@ -121,6 +140,22 @@ class TaskRouter:
         except TaskNotFoundError as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
 
+    def get_daily_note(self, note_date: date, authorization: AuthorizationHeader = None) -> DailyNoteResponse:
+        note = self._service.get_daily_note(self._username(authorization), note_date)
+        return DailyNoteResponse.from_domain(note)
+
+    def upsert_daily_note(
+        self,
+        note_date: date,
+        request: DailyNoteWriteRequest,
+        authorization: AuthorizationHeader = None,
+    ) -> DailyNoteResponse:
+        note = self._service.upsert_daily_note(
+            self._username(authorization),
+            request.to_upsert_command(note_date),
+        )
+        return DailyNoteResponse.from_domain(note)
+
     def export_tasks(
         self,
         authorization: AuthorizationHeader = None,
@@ -137,9 +172,15 @@ class TaskRouter:
             )
 
         generated_at: str = DateBounds.now().strftime("%Y%m%d_%H%M%S")
+        username: str = self._username(authorization)
         try:
             content: bytes = self._exporter.export(
-                self._service.list_all_tasks(self._username(authorization)),
+                self._service.list_all_tasks(username),
+                daily_notes=self._service.list_daily_notes(
+                    username,
+                    start_date or date.min,
+                    end_date or date.max,
+                ),
                 start_date=start_date,
                 end_date=end_date,
             )

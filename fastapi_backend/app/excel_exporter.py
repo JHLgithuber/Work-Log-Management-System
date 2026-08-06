@@ -7,7 +7,7 @@ from typing import Iterable
 from xml.sax.saxutils import escape
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from app.domain import Task, WorkEntry
+from app.domain import DailyNote, Task, WorkEntry
 
 
 class NoExportableSheetsError(ValueError):
@@ -90,12 +90,12 @@ class WorksheetBuilder:
         return (
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-            "<sheetViews><sheetView showGridLines=\"0\" workbookViewId=\"0\"/></sheetViews>"
             f"<dimension ref=\"A1:{self._cell_name(self._max_row, self._max_column)}\"/>"
+            "<sheetViews><sheetView showGridLines=\"0\" workbookViewId=\"0\"/></sheetViews>"
+            "<sheetFormatPr defaultRowHeight=\"18\"/>"
             "<cols>"
             f"{''.join(self._column_xml(column) for column in range(1, self._max_column + 1))}"
             "</cols>"
-            "<sheetFormatPr defaultRowHeight=\"18\"/>"
             f"<sheetData>{''.join(rows)}</sheetData>"
             f"{merge_xml}"
             "<pageMargins left=\"0.25\" right=\"0.25\" top=\"0.5\" bottom=\"0.5\" header=\"0.3\" footer=\"0.3\"/>"
@@ -137,11 +137,17 @@ class TaskExcelExporter:
     def export(
         self,
         tasks: Iterable[Task],
+        daily_notes: Iterable[DailyNote] = (),
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> bytes:
         root_tasks: list[Task] = list(tasks)
-        sheet_dates: list[date] = self._collect_sheet_dates(root_tasks)
+        notes_by_date: dict[date, str] = {
+            note.note_date: note.content
+            for note in daily_notes
+            if note.content.strip()
+        }
+        sheet_dates: list[date] = sorted(set(self._collect_sheet_dates(root_tasks)) | set(notes_by_date))
         if start_date is not None and end_date is not None:
             sheet_dates = [
                 sheet_date
@@ -161,7 +167,11 @@ class TaskExcelExporter:
 
         worksheet_xml_by_index: dict[int, str] = {}
         for index, sheet_date in enumerate(sheet_dates, start=1):
-            worksheet_xml_by_index[index] = self._build_sheet_xml(root_tasks, sheet_date)
+            worksheet_xml_by_index[index] = self._build_sheet_xml(
+                root_tasks,
+                sheet_date,
+                notes_by_date.get(sheet_date, ""),
+            )
 
         buffer: BytesIO = BytesIO()
         with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
@@ -174,9 +184,9 @@ class TaskExcelExporter:
                 archive.writestr(f"xl/worksheets/sheet{index}.xml", worksheet_xml)
         return buffer.getvalue()
 
-    def _build_sheet_xml(self, root_tasks: list[Task], sheet_date: date) -> str:
+    def _build_sheet_xml(self, root_tasks: list[Task], sheet_date: date, daily_note: str) -> str:
         cards: list[TaskCard] = []
-        current_row: int = 3
+        current_row: int = 5
         for task in root_tasks:
             if not self._has_exportable_entry_on_date(task, sheet_date):
                 continue
@@ -190,10 +200,18 @@ class TaskExcelExporter:
         builder.merge(1, 1, 1, max_column)
         builder.set_row_height(1, 28)
 
+        builder.set_cell(2, 1, "비고", self.LABEL_STYLE)
+        builder.fill_range(2, 1, 2, max_column, self.LABEL_STYLE)
+        builder.merge(2, 1, 2, max_column)
+        builder.set_cell(3, 1, daily_note, self.BODY_STYLE)
+        builder.fill_range(3, 1, 3, max_column, self.BODY_STYLE)
+        builder.merge(3, 1, 3, max_column)
+        builder.set_row_height(3, 48)
+
         if not cards:
-            builder.set_cell(4, 1, "해당 일자에 수행내용 또는 회고가 입력된 과업이 없습니다.", self.BODY_STYLE)
-            builder.fill_range(4, 1, 5, max_column, self.BODY_STYLE)
-            builder.merge(4, 1, 5, max_column)
+            builder.set_cell(5, 1, "해당 일자에 수행내용 또는 회고가 입력된 과업이 없습니다.", self.BODY_STYLE)
+            builder.fill_range(5, 1, 6, max_column, self.BODY_STYLE)
+            builder.merge(5, 1, 6, max_column)
             return builder.to_xml()
 
         for card in cards:

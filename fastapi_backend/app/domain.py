@@ -150,6 +150,22 @@ class WorkEntry(Base):
     task: Mapped[Task] = relationship(back_populates="entries")
 
 
+class DailyNote(Base):
+    __tablename__ = "daily_notes"
+    __table_args__ = (
+        UniqueConstraint("username", "note_date", name="uq_daily_notes_username_note_date"),
+        Index("idx_daily_notes_username", "username"),
+        Index("idx_daily_notes_note_date", "note_date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(100), nullable=False)
+    note_date: Mapped[date] = mapped_column(ISODate(), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(KoreaDateTime(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(KoreaDateTime(), nullable=False)
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -195,3 +211,9 @@ class WorkEntryUpsert:
     entry_date: date
     performed_content: str
     retrospective: str
+
+
+@dataclass(frozen=True)
+class DailyNoteUpsert:
+    note_date: date
+    content: str

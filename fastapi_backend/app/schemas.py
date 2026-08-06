@@ -4,7 +4,16 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
-from app.domain import DateBounds, Task, TaskCreate, TaskUpdate, WorkEntry, WorkEntryUpsert
+from app.domain import (
+    DailyNote,
+    DailyNoteUpsert,
+    DateBounds,
+    Task,
+    TaskCreate,
+    TaskUpdate,
+    WorkEntry,
+    WorkEntryUpsert,
+)
 
 
 class TaskWriteRequest(BaseModel):
@@ -71,6 +80,31 @@ class WorkEntryResponse(BaseModel):
             retrospective=entry.retrospective,
             created_at=entry.created_at,
             updated_at=entry.updated_at,
+        )
+
+
+class DailyNoteWriteRequest(BaseModel):
+    content: str = ""
+
+    def to_upsert_command(self, note_date: date) -> DailyNoteUpsert:
+        return DailyNoteUpsert(note_date=note_date, content=self.content)
+
+
+class DailyNoteResponse(BaseModel):
+    id: int
+    note_date: date
+    content: str
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_domain(cls, note: DailyNote) -> "DailyNoteResponse":
+        return cls(
+            id=note.id,
+            note_date=note.note_date,
+            content=note.content,
+            created_at=note.created_at,
+            updated_at=note.updated_at,
         )
 
 

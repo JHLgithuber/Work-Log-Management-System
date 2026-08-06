@@ -6,7 +6,17 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, with_loader_criteria
 
 from app.database import Database
-from app.domain import DateBounds, Task, TaskCreate, TaskUpdate, User, WorkEntry, WorkEntryUpsert
+from app.domain import (
+    DailyNote,
+    DailyNoteUpsert,
+    DateBounds,
+    Task,
+    TaskCreate,
+    TaskUpdate,
+    User,
+    WorkEntry,
+    WorkEntryUpsert,
+)
 from app.settings import settings
 
 
@@ -185,6 +195,68 @@ class TaskRepository:
                 )
             )
             session.commit()
+
+    def get_daily_note(self, username: str, note_date: date) -> DailyNote:
+        normalized_username: str = username.strip()
+        with self._database.session() as session:
+            note: DailyNote | None = session.scalar(
+                select(DailyNote).where(
+                    DailyNote.username == normalized_username,
+                    DailyNote.note_date == note_date,
+                )
+            )
+            if note is not None:
+                return note
+
+        now: datetime = DateBounds.now()
+        return DailyNote(
+            id=0,
+            username=normalized_username,
+            note_date=note_date,
+            content="",
+            created_at=now,
+            updated_at=now,
+        )
+
+    def upsert_daily_note(self, username: str, command: DailyNoteUpsert) -> DailyNote:
+        normalized_username: str = username.strip()
+        now: datetime = DateBounds.now()
+        with self._database.session() as session:
+            note: DailyNote | None = session.scalar(
+                select(DailyNote).where(
+                    DailyNote.username == normalized_username,
+                    DailyNote.note_date == command.note_date,
+                )
+            )
+            if note is None:
+                note = DailyNote(
+                    username=normalized_username,
+                    note_date=command.note_date,
+                    content=command.content,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(note)
+            else:
+                note.content = command.content
+                note.updated_at = now
+            session.commit()
+        return self.get_daily_note(normalized_username, command.note_date)
+
+    def list_daily_notes(self, username: str, start_date: date, end_date: date) -> list[DailyNote]:
+        normalized_username: str = username.strip()
+        with self._database.session() as session:
+            return list(
+                session.scalars(
+                    select(DailyNote)
+                    .where(
+                        DailyNote.username == normalized_username,
+                        DailyNote.note_date >= start_date,
+                        DailyNote.note_date <= end_date,
+                    )
+                    .order_by(DailyNote.note_date)
+                )
+            )
 
     def _resolve_user_id(self, session: Session, username: str) -> int | None:
         normalized_username: str = username.strip()
