@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:WorkLogManagementSystem_UI.Controls"
         x:Class="WorkLogManagementSystem_UI.Views.SettingsDialog"
         Title="설정"
         Width="460"
@@ -34,8 +35,8 @@
       <StackPanel>
         <TextBlock Classes="label"
                    Text="API 주소"/>
-        <TextBox x:Name="ApiBaseUrlTextBox"
-                 Watermark="http://localhost:8000"/>
+        <controls:ImeSafeTextBox x:Name="ApiBaseUrlTextBox"
+                                 Watermark="http://localhost:8000"/>
       </StackPanel>
 
       <StackPanel>

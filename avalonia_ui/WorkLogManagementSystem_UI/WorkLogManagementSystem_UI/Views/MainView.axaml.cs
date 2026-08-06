@@ -9,10 +9,12 @@ using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Controls.Platform;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using WorkLogManagementSystem_UI.Controls;
 using WorkLogManagementSystem_UI.Services;
 using WorkLogManagementSystem_UI.ViewModels;
 
@@ -27,8 +29,17 @@ public partial class MainView : UserControl
     private const double MinimumTaskPaneWidth = 220;
     private const double PreferredTaskPaneWidth = 320;
     private const double PreferredSettingsModalWidth = 560;
+    private const double PreferredRegisterUserModalWidth = 520;
+    private const double PreferredDeleteConfirmationModalWidth = 520;
+    private const double PreferredUnsavedChangesModalWidth = 520;
+    private const double TaskListDatePickerMinWidth = 200;
     private const double ModalViewportPadding = 24;
     private const int TaskPaneAnimationDurationMilliseconds = 180;
+    private const int TaskPaneModeAnimationDurationMilliseconds = 220;
+    private const string ExpandTaskPaneIconData =
+        "M4 5H10V7H7.41L11.71 11.29L10.29 12.71L6 8.41V11H4V5ZM20 19H14V17H16.59L12.29 12.71L13.71 11.29L18 15.59V13H20V19Z";
+    private const string RestoreTaskPaneIconData =
+        "M5 16H8V19H10V14H5V16ZM8 8H5V10H10V5H8V8ZM14 19H16V16H19V14H14V19ZM16 8V5H14V10H19V8H16Z";
     private bool _isNarrowLayout;
     private bool _isTaskPaneOpen = true;
     private bool _isTaskPaneExpanded;
@@ -36,9 +47,12 @@ public partial class MainView : UserControl
     private TextBox? _focusedTaskEditor;
     private IInputPane? _inputPane;
     private CancellationTokenSource? _imeAnimationCancellation;
+    private CancellationTokenSource? _taskPaneModeAnimationCancellation;
     private Thickness _imeBasePadding;
     private bool _imeInsetsAttached;
     private MainViewModel? _subscribedViewModel;
+    private Window? _hostWindow;
+    private bool _allowHostWindowClose;
 
     public MainView()
     {
@@ -48,9 +62,11 @@ public partial class MainView : UserControl
         TaskListPanel.SetValue(Panel.ZIndexProperty, 2);
         ExpandTaskPaneButton.Click += OnExpandTaskPaneClicked;
         AddHandler(InputElement.GotFocusEvent, OnTaskEditorGotFocus);
+        AddHandler(InputElement.KeyDownEvent, OnSaveShortcutKeyDown, RoutingStrategies.Tunnel);
         SizeChanged += OnSizeChanged;
         DataContextChanged += OnDataContextChanged;
         AppSettingsService.ThemeResourcesChanged += OnThemeResourcesChanged;
+        UpdateExpandTaskPaneButton();
         UpdateResponsiveLayout(Bounds.Width);
     }
 
@@ -58,7 +74,19 @@ public partial class MainView : UserControl
     {
         base.OnAttachedToVisualTree(eventArgs);
 
-        if (!OperatingSystem.IsAndroid() || TopLevel.GetTopLevel(this) is not { } topLevel)
+        TopLevel? topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel is Window window && !ReferenceEquals(_hostWindow, window))
+        {
+            if (_hostWindow is not null)
+            {
+                _hostWindow.Closing -= OnHostWindowClosing;
+            }
+
+            _hostWindow = window;
+            _hostWindow.Closing += OnHostWindowClosing;
+        }
+
+        if (!OperatingSystem.IsAndroid() || topLevel is null)
         {
             return;
         }
@@ -85,6 +113,14 @@ public partial class MainView : UserControl
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs eventArgs)
     {
+        _taskPaneModeAnimationCancellation?.Cancel();
+
+        if (_hostWindow is not null)
+        {
+            _hostWindow.Closing -= OnHostWindowClosing;
+            _hostWindow = null;
+        }
+
         if (_inputPane is not null)
         {
             _inputPane.StateChanged -= OnInputPaneStateChanged;
@@ -213,6 +249,44 @@ public partial class MainView : UserControl
         QueueFocusedTaskEditorIntoView();
     }
 
+    private async void OnSaveShortcutKeyDown(object? sender, KeyEventArgs eventArgs)
+    {
+        if (eventArgs.Key != Key.S ||
+            (eventArgs.KeyModifiers & KeyModifiers.Control) != KeyModifiers.Control)
+        {
+            return;
+        }
+
+        eventArgs.Handled = true;
+        await CommitFocusedCompositionAsync();
+
+        if (DataContext is MainViewModel viewModel && viewModel.SaveTaskCommand.CanExecute(null))
+        {
+            viewModel.SaveTaskCommand.Execute(null);
+        }
+    }
+
+    private async Task CommitFocusedCompositionAsync()
+    {
+        TopLevel? topLevel = TopLevel.GetTopLevel(this);
+        IFocusManager? focusManager = topLevel?.FocusManager;
+        if (focusManager?.GetFocusedElement() is not ImeSafeTextBox textBox ||
+            !textBox.CommitPendingComposition())
+        {
+            return;
+        }
+
+        focusManager.ClearFocus();
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Input);
+
+        if (textBox.IsAttachedToVisualTree())
+        {
+            textBox.Focus(NavigationMethod.Unspecified);
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+    }
+
     private void OnEditorScrollChanged(object? sender, ScrollChangedEventArgs eventArgs)
     {
         if (Math.Abs(eventArgs.ViewportDelta.Y) > 0.5)
@@ -254,15 +328,45 @@ public partial class MainView : UserControl
         if (_subscribedViewModel is not null)
         {
             _subscribedViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            _subscribedViewModel.CloseWindowRequested -= OnCloseWindowRequested;
             _subscribedViewModel = null;
         }
 
         if (DataContext is MainViewModel viewModel)
         {
             viewModel.PropertyChanged += OnViewModelPropertyChanged;
+            viewModel.CloseWindowRequested += OnCloseWindowRequested;
             _subscribedViewModel = viewModel;
             ApplyRuntimeThemeVariant(viewModel.ActiveThemeVariant);
         }
+    }
+
+    private void OnHostWindowClosing(object? sender, WindowClosingEventArgs eventArgs)
+    {
+        if (TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is ImeSafeTextBox textBox)
+        {
+            textBox.CommitPendingComposition();
+        }
+
+        if (_allowHostWindowClose ||
+            DataContext is not MainViewModel { HasUnsavedTaskChanges: true } viewModel)
+        {
+            return;
+        }
+
+        eventArgs.Cancel = true;
+        viewModel.RequestCloseWithUnsavedChanges();
+    }
+
+    private void OnCloseWindowRequested(object? sender, EventArgs eventArgs)
+    {
+        if (_hostWindow is null)
+        {
+            return;
+        }
+
+        _allowHostWindowClose = true;
+        _hostWindow.Close();
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
@@ -352,6 +456,7 @@ public partial class MainView : UserControl
             TaskPaneToggleButton.IsVisible = true;
             TaskPaneCloseButton.IsVisible = true;
             TaskPaneActionStrip.IsVisible = true;
+            TopBarSessionInfo.IsVisible = false;
             ApplyCompactToolbar(width);
             ApplyCompactEditor(width - (shellMargin * 2) - 32);
         }
@@ -382,21 +487,100 @@ public partial class MainView : UserControl
             TaskPaneToggleButton.IsVisible = false;
             TaskPaneCloseButton.IsVisible = false;
             TaskPaneActionStrip.IsVisible = false;
+            TopBarSessionInfo.IsVisible = true;
             ApplyRegularToolbar();
-            TaskListDatePicker.MinWidth = 170;
-            ApplyEditorDateLayout(editorContentWidth);
+            ApplyRegularEditor(editorContentWidth);
         }
     }
 
-    private void OnExpandTaskPaneClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs eventArgs)
+    private async void OnExpandTaskPaneClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs eventArgs)
     {
-        _isTaskPaneExpanded = !_isTaskPaneExpanded;
-        if (_isTaskPaneExpanded)
+        if (_taskPaneModeAnimationCancellation is not null)
+        {
+            return;
+        }
+
+        bool expanding = !_isTaskPaneExpanded;
+        var cancellation = new CancellationTokenSource();
+        _taskPaneModeAnimationCancellation = cancellation;
+        ExpandTaskPaneButton.IsEnabled = false;
+
+        try
+        {
+            await AnimateTaskPaneModeChangeAsync(expanding, cancellation.Token);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(_taskPaneModeAnimationCancellation, cancellation))
+            {
+                _taskPaneModeAnimationCancellation = null;
+                TaskListPanel.Opacity = 1;
+                EditorPanel.Opacity = 1;
+                ExpandTaskPaneButton.IsEnabled = true;
+            }
+
+            cancellation.Dispose();
+        }
+    }
+
+    private async Task AnimateTaskPaneModeChangeAsync(bool expanding, CancellationToken cancellationToken)
+    {
+        int fadeOutFrames = Math.Max(1, TaskPaneModeAnimationDurationMilliseconds / 3 / 16);
+        for (int frame = 0; frame <= fadeOutFrames; frame++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            double progress = frame / (double)fadeOutFrames;
+            double easedProgress = progress * progress;
+            TaskListPanel.Opacity = 1 - (0.28 * easedProgress);
+            if (EditorPanel.IsVisible)
+            {
+                EditorPanel.Opacity = 1 - easedProgress;
+            }
+
+            await Task.Delay(16, cancellationToken);
+        }
+
+        _isTaskPaneExpanded = expanding;
+        if (expanding)
         {
             _isTaskPaneOpen = true;
         }
 
         UpdateResponsiveLayout(Bounds.Width);
+        UpdateExpandTaskPaneButton();
+
+        TaskListPanel.Opacity = 0.72;
+        if (!expanding)
+        {
+            EditorPanel.Opacity = 0;
+        }
+
+        int fadeInFrames = Math.Max(1, (TaskPaneModeAnimationDurationMilliseconds * 2 / 3) / 16);
+        for (int frame = 0; frame <= fadeInFrames; frame++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            double progress = frame / (double)fadeInFrames;
+            double easedProgress = 1 - Math.Pow(1 - progress, 3);
+            TaskListPanel.Opacity = 0.72 + (0.28 * easedProgress);
+            if (!expanding)
+            {
+                EditorPanel.Opacity = easedProgress;
+            }
+
+            await Task.Delay(16, cancellationToken);
+        }
+    }
+
+    private void UpdateExpandTaskPaneButton()
+    {
+        ExpandTaskPaneIcon.Data = Geometry.Parse(
+            _isTaskPaneExpanded ? RestoreTaskPaneIconData : ExpandTaskPaneIconData);
+        ToolTip.SetTip(
+            ExpandTaskPaneButton,
+            _isTaskPaneExpanded ? "과업 패널 원래 크기로 복원" : "과업 패널 최대화");
     }
 
     private void ApplyRegularToolbar()
@@ -464,13 +648,48 @@ public partial class MainView : UserControl
 
     private void ApplyCompactEditor(double editorContentWidth)
     {
-        TaskListDatePicker.MinWidth = 170;
+        EditorHeaderGrid.ColumnDefinitions = new ColumnDefinitions("*");
+        EditorHeaderGrid.RowDefinitions = new RowDefinitions("Auto,Auto");
+        EditorHeaderGrid.ColumnSpacing = 0;
+        EditorHeaderGrid.RowSpacing = 10;
+        Grid.SetColumn(EditorHeaderTitle, 0);
+        Grid.SetRow(EditorHeaderTitle, 0);
+        Grid.SetColumn(EditorHeaderActions, 0);
+        Grid.SetRow(EditorHeaderActions, 1);
+        EditorHeaderActions.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right;
+        EditorHeaderActions.Margin = new Avalonia.Thickness(0);
+
+        TaskListDatePicker.MinWidth = TaskListDatePickerMinWidth;
+        ApplyEditorDateLayout(editorContentWidth);
+    }
+
+    private void ApplyRegularEditor(double editorContentWidth)
+    {
+        EditorHeaderGrid.ColumnDefinitions = new ColumnDefinitions("*,Auto");
+        EditorHeaderGrid.RowDefinitions = new RowDefinitions("Auto");
+        EditorHeaderGrid.ColumnSpacing = 12;
+        EditorHeaderGrid.RowSpacing = 0;
+        Grid.SetColumn(EditorHeaderTitle, 0);
+        Grid.SetRow(EditorHeaderTitle, 0);
+        Grid.SetColumn(EditorHeaderActions, 1);
+        Grid.SetRow(EditorHeaderActions, 0);
+        EditorHeaderActions.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right;
+        EditorHeaderActions.Margin = new Avalonia.Thickness(0);
+
+        TaskListDatePicker.MinWidth = TaskListDatePickerMinWidth;
         ApplyEditorDateLayout(editorContentWidth);
     }
 
     private void UpdateModalWidths(double width)
     {
         SettingsModalCard.Width = Math.Min(PreferredSettingsModalWidth, Math.Max(0, width - ModalViewportPadding));
+        RegisterUserModalCard.Width = Math.Min(PreferredRegisterUserModalWidth, Math.Max(0, width - ModalViewportPadding));
+        DeleteTaskConfirmationModalCard.Width = Math.Min(
+            PreferredDeleteConfirmationModalWidth,
+            Math.Max(0, width - ModalViewportPadding));
+        UnsavedChangesModalCard.Width = Math.Min(
+            PreferredUnsavedChangesModalWidth,
+            Math.Max(0, width - ModalViewportPadding));
     }
 
     private void ApplyEditorDateLayout(double editorContentWidth)
@@ -599,9 +818,12 @@ public partial class MainView : UserControl
 
     private async Task CloseTaskPaneAsync()
     {
+        _taskPaneModeAnimationCancellation?.Cancel();
+
         if (_isTaskPaneExpanded)
         {
             _isTaskPaneExpanded = false;
+            UpdateExpandTaskPaneButton();
         }
 
         if (!_isNarrowLayout || !_isTaskPaneOpen)

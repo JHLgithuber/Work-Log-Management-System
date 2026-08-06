@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:WorkLogManagementSystem_UI.ViewModels"
              xmlns:models="clr-namespace:WorkLogManagementSystem_UI.Models"
+             xmlns:controls="clr-namespace:WorkLogManagementSystem_UI.Controls"
              mc:Ignorable="d"
              d:DesignWidth="1180"
              d:DesignHeight="760"
@@ -170,10 +171,19 @@
                      Foreground="{DynamicResource AppTopBarMutedBrush}"
                      Margin="0,0,10,0"
                      VerticalAlignment="Center"/>
-          <TextBlock Text="{Binding CurrentUsername}"
-                     Foreground="{DynamicResource AppTopBarMutedBrush}"
-                     VerticalAlignment="Center"
-                     IsVisible="{Binding IsLoggedInStatusVisible}"/>
+          <StackPanel x:Name="TopBarSessionInfo"
+                      Orientation="Horizontal"
+                      VerticalAlignment="Center">
+            <TextBlock Text="{Binding CurrentUserLabel}"
+                       Foreground="{DynamicResource AppTopBarMutedBrush}"
+                       Margin="0,0,10,0"
+                       VerticalAlignment="Center"
+                       IsVisible="{Binding IsLoggedInStatusVisible}"/>
+            <TextBlock Text="{Binding LastSaveElapsedLabel}"
+                       Foreground="{DynamicResource AppTopBarMutedBrush}"
+                       VerticalAlignment="Center"
+                       IsVisible="{Binding IsLoggedInStatusVisible}"/>
+          </StackPanel>
         </WrapPanel>
 
         <StackPanel x:Name="TopBarActionGroup"
@@ -247,7 +257,8 @@
                         Height="34"
                         Padding="0"
                         ToolTip.Tip="과업 패널 확장">
-                  <PathIcon Width="18"
+                  <PathIcon x:Name="ExpandTaskPaneIcon"
+                            Width="18"
                             Height="18"
                             Data="M4 5H10V7H7.41L11.71 11.29L10.29 12.71L6 8.41V11H4V5ZM20 19H14V17H16.59L12.29 12.71L13.71 11.29L18 15.59V13H20V19Z"/>
                 </Button>
@@ -271,6 +282,8 @@
                 <CalendarDatePicker x:Name="TaskListDatePicker"
                                     Grid.Row="0"
                                     Classes="date-input"
+                                    MinWidth="200"
+                                    CustomDateFormatString="yyyy-MM-dd (ddd)"
                                     SelectedDate="{Binding SelectedDate, Mode=TwoWay}"/>
                 <Grid Grid.Row="1"
                       ColumnDefinitions="*,*,*"
@@ -290,19 +303,22 @@
                 </Grid>
               </Grid>
 
-              <Expander Header="비고"
+              <Expander Header="오늘자 비고"
+                        Padding="8,4,8,8"
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Stretch"
                         IsExpanded="{Binding IsDailyNoteExpanded, Mode=TwoWay}">
                 <StackPanel Spacing="8"
                             Margin="0,8,0,0">
-                  <TextBox Classes="editor"
-                           MinHeight="96"
+                  <controls:ImeSafeTextBox Classes="editor"
+                           MinHeight="88"
+                           HorizontalAlignment="Stretch"
                            IsEnabled="{Binding CanEditDailyNote}"
                            Text="{Binding DailyNoteContent, Mode=TwoWay}"
                            Watermark="선택한 날짜의 공통 비고를 작성하세요."/>
                   <Button Classes="primary fit"
                           HorizontalAlignment="Right"
+                          Padding="9,6"
                           Content="비고 저장"
                           IsEnabled="{Binding CanEditDailyNote}"
                           Command="{Binding SaveDailyNoteCommand}"/>
@@ -318,6 +334,7 @@
                 <Button Grid.Column="1"
                         Classes="fit"
                         Content="하위 과업 추가"
+                        IsEnabled="{Binding CanCreateChildTask}"
                         Command="{Binding NewChildTaskCommand}"/>
               </Grid>
 
@@ -330,8 +347,19 @@
                     Padding="10,8"
                     Margin="0,14,0,0"
                     IsVisible="False">
-              <ContentControl x:Name="TaskPaneActionHost"
-                              HorizontalAlignment="Right"/>
+              <Grid ColumnDefinitions="*,Auto"
+                    ColumnSpacing="8">
+                <TextBlock Grid.Column="0"
+                           Text="{Binding CurrentUserLabel}"
+                           Foreground="{DynamicResource AppTopBarMutedBrush}"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           IsVisible="{Binding IsLoggedInStatusVisible}"/>
+                <ContentControl x:Name="TaskPaneActionHost"
+                                Grid.Column="1"
+                                HorizontalAlignment="Right"/>
+              </Grid>
             </Border>
 
             <TreeView Margin="0,18,0,0"
@@ -368,10 +396,12 @@
                 Classes="panel"
                 VerticalAlignment="Stretch">
           <DockPanel LastChildFill="True">
-            <Grid DockPanel.Dock="Top"
+            <Grid x:Name="EditorHeaderGrid"
+                  DockPanel.Dock="Top"
                   ColumnDefinitions="*,Auto"
                   ColumnSpacing="12">
-              <StackPanel Grid.Column="0">
+              <StackPanel x:Name="EditorHeaderTitle"
+                          Grid.Column="0">
                 <TextBlock Classes="section-title"
                            Text="{Binding EditorModeLabel}"/>
                 <TextBlock Text="{Binding EditorParentTitleLabel}"
@@ -379,15 +409,22 @@
                            IsVisible="{Binding HasEditorParentTitle}"/>
               </StackPanel>
 
-              <StackPanel Grid.Column="1"
+              <StackPanel x:Name="EditorHeaderActions"
+                          Grid.Column="1"
                           Orientation="Horizontal"
                           Spacing="8">
-                <Button Content="삭제"
+                <Button Content="당일 내용 삭제"
+                        ToolTip.Tip="선택한 날짜의 수행내용과 회고만 삭제합니다."
+                        IsEnabled="{Binding CanDeleteSelectedDateEntry}"
+                        Command="{Binding DeleteSelectedDateEntryCommand}"/>
+                <Button Content="과업 삭제"
                         Classes="danger"
+                        ToolTip.Tip="과업과 모든 하위 과업 및 날짜별 기록을 삭제합니다."
                         IsEnabled="{Binding CanEditExistingTask}"
-                        Command="{Binding DeleteTaskCommand}"/>
+                        Command="{Binding RequestDeleteTaskCommand}"/>
                 <Button Content="저장"
                         Classes="primary"
+                        ToolTip.Tip="저장 (Ctrl+S)"
                         IsEnabled="{Binding IsEditorEnabled}"
                         Command="{Binding SaveTaskCommand}"/>
               </StackPanel>
@@ -404,7 +441,7 @@
 	                <StackPanel>
 	                  <TextBlock Classes="label"
 	                             Text="제목"/>
-	                  <TextBox Text="{Binding EditorTitle}"
+	                  <controls:ImeSafeTextBox Text="{Binding EditorTitle}"
 	                           Watermark="과업 제목"/>
 	                </StackPanel>
 
@@ -486,7 +523,7 @@
                 <StackPanel>
                   <TextBlock Classes="label"
                              Text="과업내용"/>
-                  <TextBox Classes="editor"
+                  <controls:ImeSafeTextBox Classes="editor"
                            Text="{Binding EditorContent}"
                            Watermark="과업의 목적, 범위, 기준, 산출물을 적으세요."/>
                 </StackPanel>
@@ -494,7 +531,7 @@
                 <StackPanel>
                   <TextBlock Classes="label"
                              Text="선택 일자의 수행내용"/>
-                  <TextBox Classes="editor"
+                  <controls:ImeSafeTextBox Classes="editor"
                            Text="{Binding EditorPerformedContent}"
                            Watermark="선택한 날짜에 실제 수행한 내용을 적으세요."/>
                 </StackPanel>
@@ -502,7 +539,7 @@
                 <StackPanel>
                   <TextBlock Classes="label"
                              Text="선택 일자의 회고"/>
-                  <TextBox Classes="editor"
+                  <controls:ImeSafeTextBox Classes="editor"
                            Text="{Binding EditorDailyRetrospective}"
                            Watermark="선택한 날짜의 잘 된 점, 막힌 점, 다음 액션을 적으세요."/>
                 </StackPanel>
@@ -534,7 +571,7 @@
               <StackPanel>
                 <TextBlock Classes="label"
                            Text="API 주소"/>
-                <TextBox Text="{Binding SettingsApiBaseUrl, Mode=TwoWay}"
+                <controls:ImeSafeTextBox Text="{Binding SettingsApiBaseUrl, Mode=TwoWay}"
                          Watermark="http://localhost:8000"/>
               </StackPanel>
 
@@ -614,19 +651,19 @@
             <StackPanel>
               <TextBlock Classes="label"
                          Text="현재 비밀번호"/>
-              <TextBox Text="{Binding SettingsCurrentPassword, Mode=TwoWay}"
+              <controls:ImeSafeTextBox Text="{Binding SettingsCurrentPassword, Mode=TwoWay}"
                        PasswordChar="*"/>
             </StackPanel>
             <StackPanel>
               <TextBlock Classes="label"
                          Text="새 비밀번호"/>
-              <TextBox Text="{Binding SettingsNewPassword, Mode=TwoWay}"
+              <controls:ImeSafeTextBox Text="{Binding SettingsNewPassword, Mode=TwoWay}"
                        PasswordChar="*"/>
             </StackPanel>
             <StackPanel>
               <TextBlock Classes="label"
                          Text="새 비밀번호 확인"/>
-              <TextBox Text="{Binding SettingsNewPasswordConfirm, Mode=TwoWay}"
+              <controls:ImeSafeTextBox Text="{Binding SettingsNewPasswordConfirm, Mode=TwoWay}"
                        PasswordChar="*"/>
             </StackPanel>
           </StackPanel>
@@ -653,7 +690,9 @@
             Classes="modal-scrim"
             ZIndex="23"
             IsVisible="{Binding IsRegisterUserDialogOpen}">
-      <Border Classes="modal-card">
+      <Border x:Name="RegisterUserModalCard"
+              Classes="modal-card"
+              MaxWidth="520">
         <StackPanel Spacing="16">
           <TextBlock Text="사용자 추가"
                      FontSize="20"
@@ -664,23 +703,23 @@
             <StackPanel>
               <TextBlock Classes="label"
                          Text="아이디"/>
-              <TextBox Text="{Binding NewUserUsername, Mode=TwoWay}"/>
+              <controls:ImeSafeTextBox Text="{Binding NewUserUsername, Mode=TwoWay}"/>
             </StackPanel>
             <StackPanel>
               <TextBlock Classes="label"
                          Text="표시 이름"/>
-              <TextBox Text="{Binding NewUserDisplayName, Mode=TwoWay}"/>
+              <controls:ImeSafeTextBox Text="{Binding NewUserDisplayName, Mode=TwoWay}"/>
             </StackPanel>
             <StackPanel>
               <TextBlock Classes="label"
                          Text="비밀번호"/>
-              <TextBox Text="{Binding NewUserPassword, Mode=TwoWay}"
+              <controls:ImeSafeTextBox Text="{Binding NewUserPassword, Mode=TwoWay}"
                        PasswordChar="*"/>
             </StackPanel>
             <StackPanel>
               <TextBlock Classes="label"
                          Text="비밀번호 확인"/>
-              <TextBox Text="{Binding NewUserPasswordConfirm, Mode=TwoWay}"
+              <controls:ImeSafeTextBox Text="{Binding NewUserPasswordConfirm, Mode=TwoWay}"
                        PasswordChar="*"/>
             </StackPanel>
           </StackPanel>
@@ -698,6 +737,73 @@
             <Button Classes="primary"
                     Content="추가"
                     Command="{Binding RegisterUserCommand}"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
+
+    <Border Grid.RowSpan="2"
+            Classes="modal-scrim"
+            ZIndex="25"
+            IsVisible="{Binding IsDeleteTaskConfirmationOpen}">
+      <Border x:Name="DeleteTaskConfirmationModalCard"
+              Classes="modal-card"
+              MaxWidth="520">
+        <StackPanel Spacing="16">
+          <TextBlock Text="과업 전체 삭제"
+                     FontSize="20"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource AppTextPrimaryBrush}"/>
+
+          <TextBlock Text="{Binding DeleteTaskConfirmationMessage}"
+                     Foreground="{DynamicResource AppTextPrimaryBrush}"
+                     FontWeight="SemiBold"
+                     TextWrapping="Wrap"/>
+
+          <TextBlock Text="이 과업의 모든 하위 과업과 날짜별 수행내용·회고도 함께 삭제되며 복구할 수 없습니다."
+                     Foreground="{DynamicResource AppErrorBrush}"
+                     TextWrapping="Wrap"/>
+
+          <StackPanel Orientation="Horizontal"
+                      HorizontalAlignment="Right"
+                      Spacing="8">
+            <Button Content="취소"
+                    Command="{Binding CancelDeleteTaskCommand}"/>
+            <Button Classes="danger"
+                    Content="과업 전체 삭제"
+                    Command="{Binding ConfirmDeleteTaskCommand}"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
+
+    <Border Grid.RowSpan="2"
+            Classes="modal-scrim"
+            ZIndex="26"
+            IsVisible="{Binding IsUnsavedChangesDialogOpen}">
+      <Border x:Name="UnsavedChangesModalCard"
+              Classes="modal-card"
+              MaxWidth="520">
+        <StackPanel Spacing="16">
+          <TextBlock Text="저장하지 않은 변경사항"
+                     FontSize="20"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource AppTextPrimaryBrush}"/>
+
+          <TextBlock Text="수정한 내용이 저장되지 않았습니다. 이동하거나 종료하기 전에 저장하시겠습니까?"
+                     Foreground="{DynamicResource AppTextSecondaryBrush}"
+                     TextWrapping="Wrap"/>
+
+          <StackPanel Orientation="Horizontal"
+                      HorizontalAlignment="Right"
+                      Spacing="8">
+            <Button Content="취소"
+                    Command="{Binding CancelUnsavedChangesCommand}"/>
+            <Button Content="저장 안 함"
+                    Command="{Binding DiscardUnsavedChangesCommand}"/>
+            <Button Classes="primary"
+                    Content="저장"
+                    Command="{Binding SaveUnsavedChangesCommand}"/>
           </StackPanel>
         </StackPanel>
       </Border>
@@ -776,7 +882,7 @@
                         HorizontalScrollBarVisibility="Auto"
                         VerticalScrollBarVisibility="Auto"
                         IsVisible="{Binding IsConnectionErrorHtmlVisible}">
-            <TextBox Text="{Binding ConnectionErrorHtml}"
+            <controls:ImeSafeTextBox Text="{Binding ConnectionErrorHtml}"
                      IsReadOnly="True"
                      AcceptsReturn="True"
                      TextWrapping="NoWrap"/>
@@ -817,20 +923,20 @@
           <StackPanel>
             <TextBlock Classes="label"
                        Text="API 주소"/>
-	            <TextBox Text="{Binding ConnectionGateApiBaseUrl, Mode=TwoWay}"
+	            <controls:ImeSafeTextBox Text="{Binding ConnectionGateApiBaseUrl, Mode=TwoWay}"
 	                     Watermark="http://192.168.0.14:8000"/>
 	          </StackPanel>
 
 	          <StackPanel>
 	            <TextBlock Classes="label"
 	                       Text="아이디"/>
-		            <TextBox Text="{Binding LoginUsername, Mode=TwoWay}"/>
+	            <controls:ImeSafeTextBox Text="{Binding LoginUsername, Mode=TwoWay}"/>
 	          </StackPanel>
 
 	          <StackPanel>
 	            <TextBlock Classes="label"
 	                       Text="비밀번호"/>
-	            <TextBox Text="{Binding LoginPassword, Mode=TwoWay}"
+	            <controls:ImeSafeTextBox Text="{Binding LoginPassword, Mode=TwoWay}"
 	                     PasswordChar="*"/>
 	          </StackPanel>
 

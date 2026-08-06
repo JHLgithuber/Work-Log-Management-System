@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WorkLogManagementSystem_UI.Models;
@@ -14,19 +16,40 @@ namespace WorkLogManagementSystem_UI.ViewModels;
 
 public partial class MainViewModel : ViewModelBase
 {
+    private enum PendingEditorAction
+    {
+        None,
+        SelectTask,
+        NewRootTask,
+        NewChildTask,
+        Logout,
+        CloseWindow
+    }
+
     private static readonly DateTime UnboundedStart = DateTime.MinValue;
     private static readonly DateTime UnboundedEnd = DateTime.MaxValue;
     private static readonly TimeSpan BackendTimezoneOffset = TimeSpan.FromHours(9);
+    private static readonly CultureInfo KoreanCulture = CultureInfo.GetCultureInfo("ko-KR");
     private readonly ExportFileService _exportFileService = new();
     private readonly AppSettingsService _settingsService = new();
     private readonly ICredentialStore _credentialStore = PlatformCredentialStore.Create();
+    private readonly DispatcherTimer _lastSaveTimer = new();
     private CancellationTokenSource? _loadCancellationTokenSource;
     private CancellationTokenSource? _dailyNoteCancellationTokenSource;
+    private DateTimeOffset? _lastSavedAt;
+    private TaskDto? _activeEditorTask;
+    private TaskDto? _pendingTaskSelection;
+    private PendingEditorAction _pendingEditorAction;
+    private int? _pendingParentTaskId;
+    private string _pendingParentTaskTitle = string.Empty;
+    private bool _isApplyingTaskSelection;
+    private bool _suppressEditorDirtyTracking;
     private int _dailyNoteOperationVersion;
 
     [ObservableProperty] private string _apiBaseUrl = AppDefaultsService.Load().ApiBaseUrl;
     [ObservableProperty] private string _accessToken = string.Empty;
     [ObservableProperty] private string _currentUsername = string.Empty;
+    [ObservableProperty] private string _currentDisplayName = string.Empty;
     [ObservableProperty] private string _loginUsername = string.Empty;
     [ObservableProperty] private string _loginPassword = string.Empty;
     [ObservableProperty] private bool _rememberCredentials;
@@ -39,6 +62,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private bool _isNewTask;
     [ObservableProperty] private string _statusMessage = "백엔드 서버를 실행한 뒤 새로고침하세요.";
     [ObservableProperty] private string _editorTitle = string.Empty;
+    [ObservableProperty] private string _editorDisplayTitle = string.Empty;
     [ObservableProperty] private string _editorContent = string.Empty;
     [ObservableProperty] private string _editorPerformedContent = string.Empty;
     [ObservableProperty] private string _editorDailyRetrospective = string.Empty;
@@ -60,6 +84,8 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string _settingsNewPassword = string.Empty;
     [ObservableProperty] private string _settingsNewPasswordConfirm = string.Empty;
     [ObservableProperty] private bool _isRegisterUserDialogOpen;
+    [ObservableProperty] private bool _isDeleteTaskConfirmationOpen;
+    [ObservableProperty] private bool _isUnsavedChangesDialogOpen;
     [ObservableProperty] private string _registerUserErrorMessage = string.Empty;
     [ObservableProperty] private string _newUserUsername = string.Empty;
     [ObservableProperty] private string _newUserDisplayName = string.Empty;
@@ -81,15 +107,25 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private bool _isDailyNoteExpanded;
     [ObservableProperty] private bool _isDailyNoteBusy;
     [ObservableProperty] private string _dailyNoteContent = string.Empty;
+    [ObservableProperty] private string _lastSaveElapsedLabel = "마지막 저장 없음";
+    [ObservableProperty] private bool _hasUnsavedTaskChanges;
+
+    public event EventHandler? CloseWindowRequested;
 
     public MainViewModel()
     {
+        _lastSaveTimer.Interval = TimeSpan.FromSeconds(1);
+        _lastSaveTimer.Tick += OnLastSaveTimerTick;
+        _lastSaveTimer.Start();
         LoadPersistedSettings();
         ConnectionGateApiBaseUrl = ApiBaseUrl;
         _ = InitializeConnectionAsync();
     }
 
-    public string CurrentScopeLabel => SelectedDate?.ToString("yyyy년 MM월 dd일") ?? "날짜 없음";
+    public string CurrentScopeLabel => SelectedDate?.ToString("yyyy년 MM월 dd일 (ddd)", KoreanCulture) ?? "날짜 없음";
+    public string CurrentUserLabel => string.IsNullOrWhiteSpace(CurrentDisplayName)
+        ? CurrentUsername
+        : CurrentDisplayName;
     public string EditorModeLabel
     {
         get
@@ -99,13 +135,18 @@ public partial class MainViewModel : ViewModelBase
                 return "과업 선택 없음";
             }
 
-            string title = EditorTitle.Trim();
+            if (IsNewTask)
+            {
+                return "새 과업 작성";
+            }
+
+            string title = EditorDisplayTitle.Trim();
             if (!string.IsNullOrWhiteSpace(title))
             {
                 return title;
             }
 
-            return IsNewTask ? "새 과업 작성" : "과업 제목";
+            return "과업 제목";
         }
     }
 
@@ -122,6 +163,17 @@ public partial class MainViewModel : ViewModelBase
     public bool IsConnectionErrorHtmlVisible => IsConnectionErrorDialogOpen && IsConnectionErrorHtml;
     public bool HasExportRangeErrorMessage => !string.IsNullOrWhiteSpace(ExportRangeErrorMessage);
     public bool CanEditExistingTask => IsEditorEnabled && !IsNewTask && SelectedTask is not null;
+    public bool CanCreateChildTask =>
+        IsEditorEnabled &&
+        !IsNewTask &&
+        SelectedTask is { ParentId: null };
+    public bool CanDeleteSelectedDateEntry =>
+        CanEditExistingTask &&
+        SelectedDate is not null &&
+        (!string.IsNullOrEmpty(EditorPerformedContent) || !string.IsNullOrEmpty(EditorDailyRetrospective));
+    public string DeleteTaskConfirmationMessage => SelectedTask is null
+        ? "선택한 과업을 삭제하시겠습니까?"
+        : $"‘{SelectedTask.Title}’ 과업을 전체 삭제하시겠습니까?";
     public bool IsCredentialSaveSupported => _credentialStore.IsSaveSupported;
     public bool IsCredentialSaveUnsupported => !_credentialStore.IsSaveSupported;
     public string CredentialSaveUnsupportedReason => _credentialStore.UnsupportedReason;
@@ -131,19 +183,42 @@ public partial class MainViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(CurrentScopeLabel));
         OnPropertyChanged(nameof(CanEditDailyNote));
+        OnPropertyChanged(nameof(CanDeleteSelectedDateEntry));
         _ = LoadTasksAsync();
         _ = LoadDailyNoteAsync();
         LoadSelectedTaskEntry();
     }
 
-    partial void OnSelectedTaskChanged(TaskDto? value)
+    partial void OnSelectedTaskChanged(TaskDto? oldValue, TaskDto? newValue)
     {
-        if (value is null)
+        OnPropertyChanged(nameof(DeleteTaskConfirmationMessage));
+        OnPropertyChanged(nameof(CanDeleteSelectedDateEntry));
+        OnPropertyChanged(nameof(CanCreateChildTask));
+        if (_isApplyingTaskSelection)
         {
             return;
         }
 
-        BeginEdit(value);
+        if (!IsNewTask && newValue is not null && _activeEditorTask?.Id == newValue.Id)
+        {
+            _activeEditorTask = newValue;
+            if (!HasUnsavedTaskChanges)
+            {
+                BeginEdit(newValue);
+            }
+            return;
+        }
+
+        if (HasUnsavedTaskChanges && IsEditorEnabled)
+        {
+            _pendingEditorAction = PendingEditorAction.SelectTask;
+            _pendingTaskSelection = newValue;
+            RestoreActiveTaskSelection();
+            IsUnsavedChangesDialogOpen = true;
+            return;
+        }
+
+        ApplyTaskSelection(newValue);
     }
 
     partial void OnChangePasswordErrorMessageChanged(string value)
@@ -160,18 +235,52 @@ public partial class MainViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(EditorModeLabel));
         OnPropertyChanged(nameof(CanEditExistingTask));
+        OnPropertyChanged(nameof(CanDeleteSelectedDateEntry));
+        OnPropertyChanged(nameof(CanCreateChildTask));
     }
 
     partial void OnIsEditorEnabledChanged(bool value)
     {
         OnPropertyChanged(nameof(EditorModeLabel));
         OnPropertyChanged(nameof(CanEditExistingTask));
+        OnPropertyChanged(nameof(CanDeleteSelectedDateEntry));
+        OnPropertyChanged(nameof(CanCreateChildTask));
     }
 
-    partial void OnEditorTitleChanged(string value)
+    partial void OnCurrentUsernameChanged(string value)
+    {
+        OnPropertyChanged(nameof(CurrentUserLabel));
+    }
+
+    partial void OnCurrentDisplayNameChanged(string value)
+    {
+        OnPropertyChanged(nameof(CurrentUserLabel));
+    }
+
+    partial void OnEditorDisplayTitleChanged(string value)
     {
         OnPropertyChanged(nameof(EditorModeLabel));
     }
+
+    partial void OnEditorPerformedContentChanged(string value)
+    {
+        OnPropertyChanged(nameof(CanDeleteSelectedDateEntry));
+        MarkEditorDirty();
+    }
+
+    partial void OnEditorDailyRetrospectiveChanged(string value)
+    {
+        OnPropertyChanged(nameof(CanDeleteSelectedDateEntry));
+        MarkEditorDirty();
+    }
+
+    partial void OnEditorTitleChanged(string value) => MarkEditorDirty();
+    partial void OnEditorContentChanged(string value) => MarkEditorDirty();
+    partial void OnEditorPriorityChanged(decimal value) => MarkEditorDirty();
+    partial void OnEditorParentIdChanged(int? value) => MarkEditorDirty();
+    partial void OnEditorStartDateChanged(DateTime? value) => MarkEditorDirty();
+    partial void OnEditorDueDateChanged(DateTime? value) => MarkEditorDirty();
+    partial void OnEditorActualEndDateChanged(DateTime? value) => MarkEditorDirty();
 
     partial void OnEditorParentTitleChanged(string value)
     {
@@ -363,6 +472,7 @@ public partial class MainViewModel : ViewModelBase
                 noteDate,
                 new DailyNoteWriteRequest { Content = DailyNoteContent },
                 CancellationToken.None);
+            MarkSaved();
             if (operationVersion == _dailyNoteOperationVersion && SelectedDate?.Date == noteDate)
             {
                 DailyNoteContent = saved.Content;
@@ -406,33 +516,53 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void NewRootTask()
     {
-        BeginNewTask(null, string.Empty);
+        if (HasUnsavedTaskChanges)
+        {
+            PreparePendingEditorAction(PendingEditorAction.NewRootTask);
+            return;
+        }
+
+        BeginNewTaskCore(null, string.Empty);
     }
 
     [RelayCommand]
     private void NewChildTask()
     {
-        if (SelectedTask is null)
+        if (!CanCreateChildTask || SelectedTask is null)
         {
-            StatusMessage = "하위 과업을 만들 상위 과업을 먼저 선택하세요.";
             return;
         }
 
-        BeginNewTask(SelectedTask.Id, SelectedTask.Title);
+        int parentId = SelectedTask.Id;
+        string parentTitle = SelectedTask.Title;
+        if (HasUnsavedTaskChanges)
+        {
+            _pendingParentTaskId = parentId;
+            _pendingParentTaskTitle = parentTitle;
+            PreparePendingEditorAction(PendingEditorAction.NewChildTask);
+            return;
+        }
+
+        BeginNewTaskCore(parentId, parentTitle);
     }
 
     [RelayCommand]
     private async Task SaveTaskAsync()
     {
+        await SaveTaskCoreAsync();
+    }
+
+    private async Task<bool> SaveTaskCoreAsync()
+    {
         if (!IsEditorEnabled)
         {
-            return;
+            return false;
         }
 
         if (string.IsNullOrWhiteSpace(EditorTitle))
         {
             StatusMessage = "제목은 반드시 입력해야 합니다.";
-            return;
+            return false;
         }
 
         try
@@ -444,7 +574,6 @@ public partial class MainViewModel : ViewModelBase
                 : await client.UpdateTaskAsync(SelectedTask.Id, request, CancellationToken.None);
 
             IsNewTask = false;
-            StatusMessage = $"저장됨: {savedTask.Title}";
             if (SelectedDate is not null)
             {
                 await client.SaveWorkEntryAsync(
@@ -457,29 +586,133 @@ public partial class MainViewModel : ViewModelBase
                     },
                     CancellationToken.None);
             }
+
+            HasUnsavedTaskChanges = false;
+            EditorDisplayTitle = savedTask.Title;
+            MarkSaved();
             await LoadTasksAsync();
             SelectedTask = FindTaskById(Tasks, savedTask.Id);
+            StatusMessage = $"저장됨: {savedTask.Title}";
+            return true;
         }
         catch (Exception error)
         {
             StatusMessage = $"저장 실패: {error.Message}";
+            return false;
         }
     }
 
     [RelayCommand]
-    private async Task DeleteTaskAsync()
+    private void CancelUnsavedChanges()
+    {
+        IsUnsavedChangesDialogOpen = false;
+        ClearPendingEditorAction();
+    }
+
+    [RelayCommand]
+    private void DiscardUnsavedChanges()
+    {
+        HasUnsavedTaskChanges = false;
+        IsUnsavedChangesDialogOpen = false;
+        ExecutePendingEditorAction();
+    }
+
+    [RelayCommand]
+    private async Task SaveUnsavedChangesAsync()
+    {
+        if (!await SaveTaskCoreAsync())
+        {
+            return;
+        }
+
+        IsUnsavedChangesDialogOpen = false;
+        ExecutePendingEditorAction();
+    }
+
+    public void RequestCloseWithUnsavedChanges()
+    {
+        if (!HasUnsavedTaskChanges)
+        {
+            CloseWindowRequested?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        PreparePendingEditorAction(PendingEditorAction.CloseWindow);
+    }
+
+    [RelayCommand]
+    private async Task DeleteSelectedDateEntryAsync()
+    {
+        if (!CanDeleteSelectedDateEntry || SelectedTask is null || SelectedDate is null)
+        {
+            return;
+        }
+
+        int taskId = SelectedTask.Id;
+        DateTime entryDate = SelectedDate.Value.Date;
+        try
+        {
+            using WorkLogApiClient client = CreateAuthenticatedClient();
+            await client.SaveWorkEntryAsync(
+                taskId,
+                entryDate,
+                new WorkEntryWriteRequest
+                {
+                    PerformedContent = string.Empty,
+                    Retrospective = string.Empty
+                },
+                CancellationToken.None);
+
+            UpdateEditorWithoutDirtyTracking(() =>
+            {
+                EditorPerformedContent = string.Empty;
+                EditorDailyRetrospective = string.Empty;
+            });
+            HasUnsavedTaskChanges = false;
+            await LoadTasksAsync();
+            SelectedTask = FindTaskById(Tasks, taskId);
+            StatusMessage = $"{entryDate:yyyy-MM-dd}의 수행내용과 회고를 삭제했습니다.";
+        }
+        catch (Exception error)
+        {
+            StatusMessage = $"해당일 기록 삭제 실패: {error.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void RequestDeleteTask()
+    {
+        if (!CanEditExistingTask)
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(DeleteTaskConfirmationMessage));
+        IsDeleteTaskConfirmationOpen = true;
+    }
+
+    [RelayCommand]
+    private void CancelDeleteTask()
+    {
+        IsDeleteTaskConfirmationOpen = false;
+    }
+
+    [RelayCommand]
+    private async Task ConfirmDeleteTaskAsync()
     {
         if (SelectedTask is null || IsNewTask)
         {
+            IsDeleteTaskConfirmationOpen = false;
             return;
         }
 
         try
         {
+            IsDeleteTaskConfirmationOpen = false;
             using WorkLogApiClient client = CreateAuthenticatedClient();
             await client.DeleteTaskAsync(SelectedTask.Id, CancellationToken.None);
             StatusMessage = "선택한 과업과 모든 하위 과업을 삭제했습니다.";
-            SelectedTask = null;
+            HasUnsavedTaskChanges = false;
             ClearEditor();
             await LoadTasksAsync();
         }
@@ -541,6 +774,7 @@ public partial class MainViewModel : ViewModelBase
         IsSettingsDialogOpen = false;
         IsChangePasswordDialogOpen = false;
         IsRegisterUserDialogOpen = false;
+        IsDeleteTaskConfirmationOpen = false;
         SettingsErrorMessage = string.Empty;
         ApplyThemePreview(ThemeMode);
         ClearSettingsAccountFields();
@@ -636,12 +870,16 @@ public partial class MainViewModel : ViewModelBase
             ApiBaseUrl = apiBaseUrl;
             ConnectionGateApiBaseUrl = apiBaseUrl;
             AccessToken = token.AccessToken;
-            CurrentUsername = LoginUsername.Trim();
+            using WorkLogApiClient authenticatedClient = new(apiBaseUrl, AccessToken);
+            UserDto currentUser = await authenticatedClient.GetCurrentUserAsync(CancellationToken.None);
+            CurrentUsername = currentUser.Username;
+            CurrentDisplayName = currentUser.DisplayName;
+            LoginUsername = currentUser.Username;
             IsBackendConnected = true;
             IsAuthenticated = true;
             await SaveOrClearCredentialsAsync(apiBaseUrl, CurrentUsername, LoginPassword);
             LoginPassword = string.Empty;
-            StatusMessage = $"{CurrentUsername} 로그인됨.";
+            StatusMessage = $"{CurrentUserLabel} 로그인됨.";
             await _settingsService.SaveSettingsAsync(CreateSettingsResult(), CancellationToken.None);
             await LoadTasksAsync();
         }
@@ -661,14 +899,28 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private async Task LogoutAsync()
     {
+        if (HasUnsavedTaskChanges)
+        {
+            PreparePendingEditorAction(PendingEditorAction.Logout);
+            return;
+        }
+
+        await CompleteLogoutAsync();
+    }
+
+    private async Task CompleteLogoutAsync()
+    {
         AccessToken = string.Empty;
         CurrentUsername = string.Empty;
+        CurrentDisplayName = string.Empty;
+        _lastSavedAt = null;
+        UpdateLastSaveElapsedLabel();
         IsAuthenticated = false;
         Tasks = new ObservableCollection<TaskDto>();
-        SelectedTask = null;
         IsSettingsDialogOpen = false;
         IsChangePasswordDialogOpen = false;
         IsRegisterUserDialogOpen = false;
+        HasUnsavedTaskChanges = false;
         ClearEditor();
         ClearSettingsAccountFields();
         StatusMessage = "로그아웃됨.";
@@ -834,6 +1086,7 @@ public partial class MainViewModel : ViewModelBase
                     using WorkLogApiClient authenticatedClient = new(apiBaseUrl, AccessToken);
                     UserDto currentUser = await authenticatedClient.GetCurrentUserAsync(CancellationToken.None);
                     CurrentUsername = currentUser.Username;
+                    CurrentDisplayName = currentUser.DisplayName;
                     LoginUsername = currentUser.Username;
                     IsAuthenticated = true;
                 }
@@ -841,6 +1094,7 @@ public partial class MainViewModel : ViewModelBase
                 {
                     AccessToken = string.Empty;
                     CurrentUsername = string.Empty;
+                    CurrentDisplayName = string.Empty;
                     IsAuthenticated = false;
                     StatusMessage = "저장된 로그인이 만료되었습니다.";
                 }
@@ -1019,54 +1273,73 @@ public partial class MainViewModel : ViewModelBase
         _ = LoadStoredCredentialsAsync();
     }
 
-    private void BeginNewTask(int? parentId, string parentTitle)
+    private void BeginNewTaskCore(int? parentId, string parentTitle)
     {
-        SelectedTask = null;
-        IsEditorEnabled = true;
-        IsNewTask = true;
-        EditorParentId = parentId;
-        EditorParentTitle = parentTitle;
-        EditorTitle = string.Empty;
-        EditorContent = string.Empty;
-        EditorPerformedContent = string.Empty;
-        EditorDailyRetrospective = string.Empty;
-        EditorPriority = 0;
-        EditorStartDate = SelectedDate ?? DateTime.Today;
-        EditorDueDate = SelectedDate ?? DateTime.Today;
-        EditorActualEndDate = null;
+        SetSelectedTaskWithoutPrompt(null);
+        _activeEditorTask = null;
+        UpdateEditorWithoutDirtyTracking(() =>
+        {
+            IsEditorEnabled = true;
+            IsNewTask = true;
+            EditorParentId = parentId;
+            EditorParentTitle = parentTitle;
+            EditorTitle = string.Empty;
+            EditorDisplayTitle = string.Empty;
+            EditorContent = string.Empty;
+            EditorPerformedContent = string.Empty;
+            EditorDailyRetrospective = string.Empty;
+            EditorPriority = 0;
+            EditorStartDate = SelectedDate ?? DateTime.Today;
+            EditorDueDate = SelectedDate ?? DateTime.Today;
+            EditorActualEndDate = null;
+        });
+        HasUnsavedTaskChanges = false;
         StatusMessage = parentId is null ? "새 최상위 과업을 작성 중입니다." : $"#{parentId}의 하위 과업을 작성 중입니다.";
         OnPropertyChanged(nameof(EditorModeLabel));
     }
 
     private void BeginEdit(TaskDto task)
     {
-        IsEditorEnabled = true;
-        IsNewTask = false;
-        EditorParentId = task.ParentId;
-        EditorParentTitle = ResolveParentTitle(task.ParentId);
-        EditorTitle = task.Title;
-        EditorContent = task.Content;
-        EditorPriority = task.Priority;
-        EditorStartDate = ToPickerDate(task.StartAt);
-        EditorDueDate = ToPickerDate(task.DueAt);
-        EditorActualEndDate = task.ActualEndAt is null ? null : ToPickerDate(task.ActualEndAt.Value);
-        LoadSelectedTaskEntry();
+        _activeEditorTask = task;
+        UpdateEditorWithoutDirtyTracking(() =>
+        {
+            IsEditorEnabled = true;
+            IsNewTask = false;
+            EditorParentId = task.ParentId;
+            EditorParentTitle = ResolveParentTitle(task.ParentId);
+            EditorTitle = task.Title;
+            EditorDisplayTitle = task.Title;
+            EditorContent = task.Content;
+            EditorPriority = task.Priority;
+            EditorStartDate = ToPickerDate(task.StartAt);
+            EditorDueDate = ToPickerDate(task.DueAt);
+            EditorActualEndDate = task.ActualEndAt is null ? null : ToPickerDate(task.ActualEndAt.Value);
+            LoadSelectedTaskEntry();
+        });
+        HasUnsavedTaskChanges = false;
         OnPropertyChanged(nameof(EditorModeLabel));
         OnPropertyChanged(nameof(CanEditExistingTask));
     }
 
     private void ClearEditor()
     {
-        IsEditorEnabled = false;
-        IsNewTask = false;
-        EditorParentId = null;
-        EditorParentTitle = string.Empty;
-        EditorTitle = string.Empty;
-        EditorContent = string.Empty;
-        EditorPerformedContent = string.Empty;
-        EditorDailyRetrospective = string.Empty;
-        EditorPriority = 0;
-        EditorActualEndDate = null;
+        SetSelectedTaskWithoutPrompt(null);
+        _activeEditorTask = null;
+        UpdateEditorWithoutDirtyTracking(() =>
+        {
+            IsEditorEnabled = false;
+            IsNewTask = false;
+            EditorParentId = null;
+            EditorParentTitle = string.Empty;
+            EditorTitle = string.Empty;
+            EditorDisplayTitle = string.Empty;
+            EditorContent = string.Empty;
+            EditorPerformedContent = string.Empty;
+            EditorDailyRetrospective = string.Empty;
+            EditorPriority = 0;
+            EditorActualEndDate = null;
+        });
+        HasUnsavedTaskChanges = false;
         OnPropertyChanged(nameof(EditorModeLabel));
         OnPropertyChanged(nameof(CanEditExistingTask));
     }
@@ -1092,6 +1365,127 @@ public partial class MainViewModel : ViewModelBase
     private WorkLogApiClient CreateAuthenticatedClient()
     {
         return new WorkLogApiClient(ApiBaseUrl, AccessToken);
+    }
+
+    private void MarkEditorDirty()
+    {
+        if (!_suppressEditorDirtyTracking && IsEditorEnabled)
+        {
+            HasUnsavedTaskChanges = true;
+        }
+    }
+
+    private void UpdateEditorWithoutDirtyTracking(Action update)
+    {
+        bool wasSuppressed = _suppressEditorDirtyTracking;
+        _suppressEditorDirtyTracking = true;
+        try
+        {
+            update();
+        }
+        finally
+        {
+            _suppressEditorDirtyTracking = wasSuppressed;
+        }
+    }
+
+    private void SetSelectedTaskWithoutPrompt(TaskDto? task)
+    {
+        _isApplyingTaskSelection = true;
+        try
+        {
+            SelectedTask = task;
+        }
+        finally
+        {
+            _isApplyingTaskSelection = false;
+        }
+    }
+
+    private void RestoreActiveTaskSelection()
+    {
+        SetSelectedTaskWithoutPrompt(IsNewTask ? null : _activeEditorTask);
+    }
+
+    private void ApplyTaskSelection(TaskDto? task)
+    {
+        SetSelectedTaskWithoutPrompt(task);
+        if (task is null)
+        {
+            ClearEditor();
+            return;
+        }
+
+        BeginEdit(task);
+    }
+
+    private void PreparePendingEditorAction(PendingEditorAction action)
+    {
+        _pendingEditorAction = action;
+        if (action != PendingEditorAction.SelectTask)
+        {
+            _pendingTaskSelection = null;
+        }
+        IsUnsavedChangesDialogOpen = true;
+    }
+
+    private void ClearPendingEditorAction()
+    {
+        _pendingEditorAction = PendingEditorAction.None;
+        _pendingTaskSelection = null;
+        _pendingParentTaskId = null;
+        _pendingParentTaskTitle = string.Empty;
+    }
+
+    private void ExecutePendingEditorAction()
+    {
+        PendingEditorAction action = _pendingEditorAction;
+        TaskDto? task = _pendingTaskSelection;
+        int? parentId = _pendingParentTaskId;
+        string parentTitle = _pendingParentTaskTitle;
+        ClearPendingEditorAction();
+
+        switch (action)
+        {
+            case PendingEditorAction.SelectTask:
+                ApplyTaskSelection(task is null ? null : FindTaskById(Tasks, task.Id) ?? task);
+                break;
+            case PendingEditorAction.NewRootTask:
+                BeginNewTaskCore(null, string.Empty);
+                break;
+            case PendingEditorAction.NewChildTask:
+                BeginNewTaskCore(parentId, parentTitle);
+                break;
+            case PendingEditorAction.Logout:
+                _ = CompleteLogoutAsync();
+                break;
+            case PendingEditorAction.CloseWindow:
+                CloseWindowRequested?.Invoke(this, EventArgs.Empty);
+                break;
+        }
+    }
+
+    private void MarkSaved()
+    {
+        _lastSavedAt = DateTimeOffset.Now;
+        UpdateLastSaveElapsedLabel();
+    }
+
+    private void OnLastSaveTimerTick(object? sender, EventArgs eventArgs)
+    {
+        UpdateLastSaveElapsedLabel();
+    }
+
+    private void UpdateLastSaveElapsedLabel()
+    {
+        if (_lastSavedAt is null)
+        {
+            LastSaveElapsedLabel = "마지막 저장 없음";
+            return;
+        }
+
+        long elapsedSeconds = Math.Max(0, (long)(DateTimeOffset.Now - _lastSavedAt.Value).TotalSeconds);
+        LastSaveElapsedLabel = $"마지막 저장 {elapsedSeconds}초 전";
     }
 
     private AppSettingsResult CreateSettingsResult()
@@ -1193,6 +1587,11 @@ public partial class MainViewModel : ViewModelBase
     }
 
     private void LoadSelectedTaskEntry()
+    {
+        UpdateEditorWithoutDirtyTracking(LoadSelectedTaskEntryCore);
+    }
+
+    private void LoadSelectedTaskEntryCore()
     {
         if (SelectedTask is null || SelectedDate is null || IsNewTask)
         {
