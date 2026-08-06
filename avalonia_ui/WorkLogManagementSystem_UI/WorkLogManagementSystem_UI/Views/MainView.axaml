@@ -290,6 +290,25 @@
                 </Grid>
               </Grid>
 
+              <Expander Header="비고"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch"
+                        IsExpanded="{Binding IsDailyNoteExpanded, Mode=TwoWay}">
+                <StackPanel Spacing="8"
+                            Margin="0,8,0,0">
+                  <TextBox Classes="editor"
+                           MinHeight="96"
+                           IsEnabled="{Binding CanEditDailyNote}"
+                           Text="{Binding DailyNoteContent, Mode=TwoWay}"
+                           Watermark="선택한 날짜의 공통 비고를 작성하세요."/>
+                  <Button Classes="primary fit"
+                          HorizontalAlignment="Right"
+                          Content="비고 저장"
+                          IsEnabled="{Binding CanEditDailyNote}"
+                          Command="{Binding SaveDailyNoteCommand}"/>
+                </StackPanel>
+              </Expander>
+
               <Grid ColumnDefinitions="*,*"
                     ColumnSpacing="8">
                 <Button Grid.Column="0"

@@ -121,6 +121,30 @@ public sealed class WorkEntryWriteRequest
     public string Retrospective { get; set; } = string.Empty;
 }
 
+public sealed class DailyNoteDto
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("note_date")]
+    public DateOnly NoteDate { get; set; }
+
+    [JsonPropertyName("content")]
+    public string Content { get; set; } = string.Empty;
+
+    [JsonPropertyName("created_at")]
+    public DateTimeOffset CreatedAt { get; set; }
+
+    [JsonPropertyName("updated_at")]
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+public sealed class DailyNoteWriteRequest
+{
+    [JsonPropertyName("content")]
+    public string Content { get; set; } = string.Empty;
+}
+
 public sealed class LoginRequest
 {
     [JsonPropertyName("username")]

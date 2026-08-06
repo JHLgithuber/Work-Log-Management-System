@@ -21,6 +21,8 @@ public partial class MainViewModel : ViewModelBase
     private readonly AppSettingsService _settingsService = new();
     private readonly ICredentialStore _credentialStore = PlatformCredentialStore.Create();
     private CancellationTokenSource? _loadCancellationTokenSource;
+    private CancellationTokenSource? _dailyNoteCancellationTokenSource;
+    private int _dailyNoteOperationVersion;
 
     [ObservableProperty] private string _apiBaseUrl = AppDefaultsService.Load().ApiBaseUrl;
     [ObservableProperty] private string _accessToken = string.Empty;
@@ -76,6 +78,9 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private DateTime? _exportEndDate = DateTime.Today;
     [ObservableProperty] private string _exportRangeErrorMessage = string.Empty;
     [ObservableProperty] private bool _isAuthenticated;
+    [ObservableProperty] private bool _isDailyNoteExpanded;
+    [ObservableProperty] private bool _isDailyNoteBusy;
+    [ObservableProperty] private string _dailyNoteContent = string.Empty;
 
     public MainViewModel()
     {
@@ -120,11 +125,14 @@ public partial class MainViewModel : ViewModelBase
     public bool IsCredentialSaveSupported => _credentialStore.IsSaveSupported;
     public bool IsCredentialSaveUnsupported => !_credentialStore.IsSaveSupported;
     public string CredentialSaveUnsupportedReason => _credentialStore.UnsupportedReason;
+    public bool CanEditDailyNote => SelectedDate is not null && IsBackendConnected && IsAuthenticated && !IsDailyNoteBusy;
 
     partial void OnSelectedDateChanged(DateTime? value)
     {
         OnPropertyChanged(nameof(CurrentScopeLabel));
+        OnPropertyChanged(nameof(CanEditDailyNote));
         _ = LoadTasksAsync();
+        _ = LoadDailyNoteAsync();
         LoadSelectedTaskEntry();
     }
 
@@ -185,12 +193,27 @@ public partial class MainViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(IsConnectionGateVisible));
         OnPropertyChanged(nameof(IsLoggedInStatusVisible));
+        OnPropertyChanged(nameof(CanEditDailyNote));
     }
 
     partial void OnIsAuthenticatedChanged(bool value)
     {
         OnPropertyChanged(nameof(IsConnectionGateVisible));
         OnPropertyChanged(nameof(IsLoggedInStatusVisible));
+        OnPropertyChanged(nameof(CanEditDailyNote));
+        if (value)
+        {
+            _ = LoadDailyNoteAsync();
+        }
+        else
+        {
+            DailyNoteContent = string.Empty;
+        }
+    }
+
+    partial void OnIsDailyNoteBusyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanEditDailyNote));
     }
 
     partial void OnConnectionGateErrorMessageChanged(string value)
@@ -273,6 +296,92 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception error)
         {
             StatusMessage = $"로드 실패: {error.Message}";
+        }
+    }
+
+    private async Task LoadDailyNoteAsync()
+    {
+        if (SelectedDate is null || !IsBackendConnected || !IsAuthenticated)
+        {
+            DailyNoteContent = string.Empty;
+            return;
+        }
+
+        DateTime requestedDate = SelectedDate.Value.Date;
+        _dailyNoteCancellationTokenSource?.Cancel();
+        _dailyNoteCancellationTokenSource = new CancellationTokenSource();
+        CancellationToken cancellationToken = _dailyNoteCancellationTokenSource.Token;
+        int operationVersion = ++_dailyNoteOperationVersion;
+        DailyNoteContent = string.Empty;
+        IsDailyNoteBusy = true;
+
+        try
+        {
+            using WorkLogApiClient client = CreateAuthenticatedClient();
+            DailyNoteDto note = await client.GetDailyNoteAsync(requestedDate, cancellationToken);
+            if (operationVersion == _dailyNoteOperationVersion && SelectedDate?.Date == requestedDate)
+            {
+                DailyNoteContent = note.Content;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception error)
+        {
+            if (operationVersion == _dailyNoteOperationVersion && SelectedDate?.Date == requestedDate)
+            {
+                DailyNoteContent = string.Empty;
+                StatusMessage = $"비고 로드 실패: {error.Message}";
+            }
+        }
+        finally
+        {
+            if (operationVersion == _dailyNoteOperationVersion && SelectedDate?.Date == requestedDate)
+            {
+                IsDailyNoteBusy = false;
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task SaveDailyNoteAsync()
+    {
+        if (!CanEditDailyNote || SelectedDate is null)
+        {
+            return;
+        }
+
+        DateTime noteDate = SelectedDate.Value.Date;
+        _dailyNoteCancellationTokenSource?.Cancel();
+        int operationVersion = ++_dailyNoteOperationVersion;
+        IsDailyNoteBusy = true;
+        try
+        {
+            using WorkLogApiClient client = CreateAuthenticatedClient();
+            DailyNoteDto saved = await client.SaveDailyNoteAsync(
+                noteDate,
+                new DailyNoteWriteRequest { Content = DailyNoteContent },
+                CancellationToken.None);
+            if (operationVersion == _dailyNoteOperationVersion && SelectedDate?.Date == noteDate)
+            {
+                DailyNoteContent = saved.Content;
+                StatusMessage = $"{noteDate:yyyy-MM-dd} 비고를 저장했습니다.";
+            }
+        }
+        catch (Exception error)
+        {
+            if (operationVersion == _dailyNoteOperationVersion)
+            {
+                StatusMessage = $"비고 저장 실패: {error.Message}";
+            }
+        }
+        finally
+        {
+            if (operationVersion == _dailyNoteOperationVersion)
+            {
+                IsDailyNoteBusy = false;
+            }
         }
     }
 

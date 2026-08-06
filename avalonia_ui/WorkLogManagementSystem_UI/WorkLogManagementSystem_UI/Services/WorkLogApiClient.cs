@@ -124,6 +124,32 @@ public sealed class WorkLogApiClient : IDisposable
         return entry ?? throw new InvalidOperationException("The backend returned an empty work entry response.");
     }
 
+    public async Task<DailyNoteDto> GetDailyNoteAsync(DateTime noteDate, CancellationToken cancellationToken)
+    {
+        string dateValue = Uri.EscapeDataString(noteDate.ToString("yyyy-MM-dd"));
+        DailyNoteDto? note = await _httpClient.GetFromJsonAsync<DailyNoteDto>(
+            $"/tasks/daily-notes/{dateValue}",
+            JsonOptions,
+            cancellationToken);
+        return note ?? throw new InvalidOperationException("The backend returned an empty daily note response.");
+    }
+
+    public async Task<DailyNoteDto> SaveDailyNoteAsync(
+        DateTime noteDate,
+        DailyNoteWriteRequest request,
+        CancellationToken cancellationToken)
+    {
+        string dateValue = Uri.EscapeDataString(noteDate.ToString("yyyy-MM-dd"));
+        using HttpResponseMessage response = await _httpClient.PutAsJsonAsync(
+            $"/tasks/daily-notes/{dateValue}",
+            request,
+            JsonOptions,
+            cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        DailyNoteDto? note = await response.Content.ReadFromJsonAsync<DailyNoteDto>(JsonOptions, cancellationToken);
+        return note ?? throw new InvalidOperationException("The backend returned an empty daily note response.");
+    }
+
     public async Task<byte[]> ExportExcelAsync(
         DateTime startDate,
         DateTime endDate,
