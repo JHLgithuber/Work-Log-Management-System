@@ -7,6 +7,7 @@
         <Nullable>enable</Nullable>
         <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
         <RootNamespace>WorkLogManagementSystem_UI.Desktop</RootNamespace>
+        <ApplicationIcon>..\WorkLogManagementSystem_UI\Assets\avalonia-logo.ico</ApplicationIcon>
     </PropertyGroup>
 
     <PropertyGroup>
