@@ -5,6 +5,7 @@ using Android.Content.Res;
 using Android.Database;
 using Android.OS;
 using Android.Provider;
+using Android.Views;
 using Avalonia;
 using Avalonia.Android;
 using Avalonia.Styling;
@@ -18,6 +19,7 @@ namespace WorkLogManagementSystem_UI.Android;
     Theme = "@style/MyTheme.NoActionBar",
     Icon = "@drawable/icon",
     MainLauncher = true,
+    WindowSoftInputMode = SoftInput.AdjustResize,
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize)]
 public class MainActivity : AvaloniaMainActivity<App>
 {

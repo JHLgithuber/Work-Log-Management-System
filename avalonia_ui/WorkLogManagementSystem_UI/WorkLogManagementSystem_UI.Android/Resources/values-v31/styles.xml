@@ -16,6 +16,5 @@
   </style>
   <style name="MyTheme.Main"
          parent ="MyTheme.NoActionBar">
-    <item name="android:windowIsTranslucent">true</item>
   </style>
 </resources>

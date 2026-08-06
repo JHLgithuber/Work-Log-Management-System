@@ -1,12 +1,17 @@
 using System;
 using System.ComponentModel;
 using System.Globalization;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
+using Avalonia.Animation;
+using Avalonia.Animation.Easings;
 using Avalonia.Controls;
+using Avalonia.Controls.Platform;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using WorkLogManagementSystem_UI.Services;
 using WorkLogManagementSystem_UI.ViewModels;
@@ -27,6 +32,12 @@ public partial class MainView : UserControl
     private bool _isNarrowLayout;
     private bool _isTaskPaneOpen = true;
     private bool _isTaskPaneExpanded;
+    private bool _editorBringIntoViewQueued;
+    private TextBox? _focusedTaskEditor;
+    private IInputPane? _inputPane;
+    private CancellationTokenSource? _imeAnimationCancellation;
+    private Thickness _imeBasePadding;
+    private bool _imeInsetsAttached;
     private MainViewModel? _subscribedViewModel;
 
     public MainView()
@@ -36,10 +47,200 @@ public partial class MainView : UserControl
         TaskPaneOverlay.SetValue(Panel.ZIndexProperty, 1);
         TaskListPanel.SetValue(Panel.ZIndexProperty, 2);
         ExpandTaskPaneButton.Click += OnExpandTaskPaneClicked;
+        AddHandler(InputElement.GotFocusEvent, OnTaskEditorGotFocus);
         SizeChanged += OnSizeChanged;
         DataContextChanged += OnDataContextChanged;
         AppSettingsService.ThemeResourcesChanged += OnThemeResourcesChanged;
         UpdateResponsiveLayout(Bounds.Width);
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs eventArgs)
+    {
+        base.OnAttachedToVisualTree(eventArgs);
+
+        if (!OperatingSystem.IsAndroid() || TopLevel.GetTopLevel(this) is not { } topLevel)
+        {
+            return;
+        }
+
+        if (topLevel.InsetsManager is { } insetsManager)
+        {
+            // Use the platform edge-to-edge path on every supported Android version.
+            // API 35+ enforces this, while older versions honor the preference here.
+            insetsManager.DisplayEdgeToEdgePreference = true;
+        }
+
+        _imeBasePadding = RootThemeScope.Padding;
+        _imeInsetsAttached = true;
+        _inputPane = topLevel.InputPane;
+
+        if (_inputPane is null)
+        {
+            return;
+        }
+
+        _inputPane.StateChanged += OnInputPaneStateChanged;
+        SetImeOcclusionHeight(_inputPane.OccludedRect.Height);
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs eventArgs)
+    {
+        if (_inputPane is not null)
+        {
+            _inputPane.StateChanged -= OnInputPaneStateChanged;
+            _inputPane = null;
+        }
+
+        if (_imeInsetsAttached)
+        {
+            CancelImeAnimation();
+            RootThemeScope.Padding = _imeBasePadding;
+            _imeInsetsAttached = false;
+        }
+
+        base.OnDetachedFromVisualTree(eventArgs);
+    }
+
+    private void OnInputPaneStateChanged(object? sender, InputPaneStateEventArgs eventArgs)
+    {
+        double currentHeight = Math.Max(0, RootThemeScope.Padding.Bottom - _imeBasePadding.Bottom);
+        double targetHeight = Math.Max(0, eventArgs.EndRect.Height);
+
+        CancelImeAnimation();
+
+        // Keep the final value as the local value. The animation temporarily has
+        // higher priority and moves from the current inset to the Android IME target.
+        RootThemeScope.Padding = CreateImePadding(targetHeight);
+
+        if (eventArgs.AnimationDuration <= TimeSpan.Zero || Math.Abs(currentHeight - targetHeight) < 0.5)
+        {
+            QueueFocusedTaskEditorIntoView();
+            return;
+        }
+
+        var animation = new Animation
+        {
+            Duration = eventArgs.AnimationDuration,
+            Easing = eventArgs.Easing as Easing ?? new LinearEasing(),
+            Children =
+            {
+                new KeyFrame
+                {
+                    Cue = new Cue(0),
+                    Setters =
+                    {
+                        new Setter
+                        {
+                            Property = Decorator.PaddingProperty,
+                            Value = CreateImePadding(currentHeight),
+                        },
+                    },
+                },
+                new KeyFrame
+                {
+                    Cue = new Cue(1),
+                    Setters =
+                    {
+                        new Setter
+                        {
+                            Property = Decorator.PaddingProperty,
+                            Value = CreateImePadding(targetHeight),
+                        },
+                    },
+                },
+            },
+        };
+
+        var cancellation = new CancellationTokenSource();
+        _imeAnimationCancellation = cancellation;
+        _ = RunImeAnimationAsync(animation, cancellation);
+    }
+
+    private async Task RunImeAnimationAsync(Animation animation, CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await animation.RunAsync(RootThemeScope, cancellation.Token);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            // A reversing or replacement IME transition continues from the current padding.
+        }
+        finally
+        {
+            if (ReferenceEquals(_imeAnimationCancellation, cancellation))
+            {
+                _imeAnimationCancellation = null;
+                QueueFocusedTaskEditorIntoView();
+            }
+
+            cancellation.Dispose();
+        }
+    }
+
+    private void SetImeOcclusionHeight(double height)
+    {
+        RootThemeScope.Padding = CreateImePadding(Math.Max(0, height));
+        QueueFocusedTaskEditorIntoView();
+    }
+
+    private Thickness CreateImePadding(double imeHeight)
+    {
+        return new Thickness(
+            _imeBasePadding.Left,
+            _imeBasePadding.Top,
+            _imeBasePadding.Right,
+            _imeBasePadding.Bottom + imeHeight);
+    }
+
+    private void CancelImeAnimation()
+    {
+        CancellationTokenSource? cancellation = _imeAnimationCancellation;
+        _imeAnimationCancellation = null;
+        cancellation?.Cancel();
+    }
+
+    private void OnTaskEditorGotFocus(object? sender, GotFocusEventArgs eventArgs)
+    {
+        if (eventArgs.Source is not TextBox textBox ||
+            !textBox.Classes.Contains("editor") ||
+            textBox.FindAncestorOfType<ScrollViewer>() != EditorScrollViewer)
+        {
+            return;
+        }
+
+        _focusedTaskEditor = textBox;
+        QueueFocusedTaskEditorIntoView();
+    }
+
+    private void OnEditorScrollChanged(object? sender, ScrollChangedEventArgs eventArgs)
+    {
+        if (Math.Abs(eventArgs.ViewportDelta.Y) > 0.5)
+        {
+            QueueFocusedTaskEditorIntoView();
+        }
+    }
+
+    private void QueueFocusedTaskEditorIntoView()
+    {
+        if (_editorBringIntoViewQueued)
+        {
+            return;
+        }
+
+        _editorBringIntoViewQueued = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _editorBringIntoViewQueued = false;
+
+            if (_focusedTaskEditor is not { IsFocused: true } textBox ||
+                textBox.FindAncestorOfType<ScrollViewer>() != EditorScrollViewer)
+            {
+                return;
+            }
+
+            (textBox.Parent as Control ?? textBox).BringIntoView();
+        }, DispatcherPriority.Loaded);
     }
 
     private void OnThemeResourcesChanged(object? sender, EventArgs eventArgs)
