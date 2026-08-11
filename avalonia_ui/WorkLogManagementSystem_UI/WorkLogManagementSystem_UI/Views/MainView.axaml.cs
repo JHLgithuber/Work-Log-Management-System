@@ -26,6 +26,8 @@ public partial class MainView : UserControl
     private const double CompactWidthThreshold = 420;
     private const double ThreeColumnDateThreshold = 720;
     private const double TwoColumnDateThreshold = 390;
+    private const double CompactEditorActionsWidth = 328;
+    private const double MinimumFixedEditorActionsWidth = 344;
     private const double MinimumTaskPaneWidth = 220;
     private const double PreferredTaskPaneWidth = 320;
     private const double PreferredSettingsModalWidth = 560;
@@ -239,7 +241,8 @@ public partial class MainView : UserControl
 
     private void OnTaskEditorGotFocus(object? sender, GotFocusEventArgs eventArgs)
     {
-        if (eventArgs.Source is not TextBox textBox ||
+        if (!OperatingSystem.IsAndroid() ||
+            eventArgs.Source is not TextBox textBox ||
             !textBox.Classes.Contains("editor") ||
             textBox.FindAncestorOfType<ScrollViewer>() != EditorScrollViewer)
         {
@@ -674,6 +677,50 @@ public partial class MainView : UserControl
 
     private void ApplyCompactEditor(double editorContentWidth)
     {
+        ApplyStackedEditorHeader(editorContentWidth);
+
+        TaskListDatePicker.MinWidth = TaskListDatePickerMinWidth;
+        ApplyEditorDateLayout(editorContentWidth);
+    }
+
+    private void ApplyRegularEditor(double editorContentWidth)
+    {
+        if (OperatingSystem.IsAndroid())
+        {
+            ApplyStackedEditorHeader(editorContentWidth);
+            TaskListDatePicker.MinWidth = TaskListDatePickerMinWidth;
+            ApplyEditorDateLayout(editorContentWidth);
+            return;
+        }
+
+        ApplyInlineEditorHeader(useFixedActionWidths: false);
+
+        TaskListDatePicker.MinWidth = TaskListDatePickerMinWidth;
+        ApplyEditorDateLayout(editorContentWidth);
+    }
+
+    private void ApplyInlineEditorHeader(bool useFixedActionWidths)
+    {
+        EditorHeaderGrid.ColumnDefinitions = useFixedActionWidths
+            ? new ColumnDefinitions($"*,{CompactEditorActionsWidth.ToString(CultureInfo.InvariantCulture)}")
+            : new ColumnDefinitions("*,Auto");
+        EditorHeaderGrid.RowDefinitions = new RowDefinitions("Auto");
+        EditorHeaderGrid.ColumnSpacing = 12;
+        EditorHeaderGrid.RowSpacing = 0;
+        Grid.SetColumn(EditorHeaderTitle, 0);
+        Grid.SetRow(EditorHeaderTitle, 0);
+        Grid.SetColumn(EditorHeaderActions, 1);
+        Grid.SetRow(EditorHeaderActions, 0);
+        EditorHeaderActions.ColumnDefinitions = useFixedActionWidths
+            ? new ColumnDefinitions("132,104,76")
+            : new ColumnDefinitions("Auto,Auto,Auto");
+        EditorHeaderActions.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right;
+        EditorHeaderActions.Margin = new Avalonia.Thickness(0);
+    }
+
+    private void ApplyStackedEditorHeader(double editorContentWidth)
+    {
+        bool useFixedActionWidths = editorContentWidth >= MinimumFixedEditorActionsWidth;
         EditorHeaderGrid.ColumnDefinitions = new ColumnDefinitions("*");
         EditorHeaderGrid.RowDefinitions = new RowDefinitions("Auto,Auto");
         EditorHeaderGrid.ColumnSpacing = 0;
@@ -682,28 +729,13 @@ public partial class MainView : UserControl
         Grid.SetRow(EditorHeaderTitle, 0);
         Grid.SetColumn(EditorHeaderActions, 0);
         Grid.SetRow(EditorHeaderActions, 1);
-        EditorHeaderActions.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right;
+        EditorHeaderActions.ColumnDefinitions = useFixedActionWidths
+            ? new ColumnDefinitions("132,104,76")
+            : new ColumnDefinitions("*,*,*");
+        EditorHeaderActions.HorizontalAlignment = useFixedActionWidths
+            ? Avalonia.Layout.HorizontalAlignment.Right
+            : Avalonia.Layout.HorizontalAlignment.Stretch;
         EditorHeaderActions.Margin = new Avalonia.Thickness(0);
-
-        TaskListDatePicker.MinWidth = TaskListDatePickerMinWidth;
-        ApplyEditorDateLayout(editorContentWidth);
-    }
-
-    private void ApplyRegularEditor(double editorContentWidth)
-    {
-        EditorHeaderGrid.ColumnDefinitions = new ColumnDefinitions("*,Auto");
-        EditorHeaderGrid.RowDefinitions = new RowDefinitions("Auto");
-        EditorHeaderGrid.ColumnSpacing = 12;
-        EditorHeaderGrid.RowSpacing = 0;
-        Grid.SetColumn(EditorHeaderTitle, 0);
-        Grid.SetRow(EditorHeaderTitle, 0);
-        Grid.SetColumn(EditorHeaderActions, 1);
-        Grid.SetRow(EditorHeaderActions, 0);
-        EditorHeaderActions.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right;
-        EditorHeaderActions.Margin = new Avalonia.Thickness(0);
-
-        TaskListDatePicker.MinWidth = TaskListDatePickerMinWidth;
-        ApplyEditorDateLayout(editorContentWidth);
     }
 
     private void UpdateModalWidths(double width)

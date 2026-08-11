@@ -77,6 +77,12 @@
       <Setter Property="BorderBrush" Value="{DynamicResource AppDangerBrush}"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
+    <Style Selector="Button.danger-outline">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppDangerBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppDangerBrush}"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
     <Style Selector="Button.fit">
       <Setter Property="HorizontalAlignment" Value="Stretch"/>
       <Setter Property="HorizontalContentAlignment" Value="Center"/>
@@ -433,25 +439,29 @@
                            IsVisible="{Binding HasEditorParentTitle}"/>
               </StackPanel>
 
-              <StackPanel x:Name="EditorHeaderActions"
-                          Grid.Column="1"
-                          Orientation="Horizontal"
-                          Spacing="8">
-                <Button Content="당일 내용 삭제"
+              <Grid x:Name="EditorHeaderActions"
+                    Grid.Column="1"
+                    ColumnDefinitions="Auto,Auto,Auto"
+                    ColumnSpacing="8">
+                <Button Grid.Column="0"
+                        Classes="fit"
+                        Content="당일 내용 삭제"
                         ToolTip.Tip="선택한 날짜의 수행내용과 회고만 삭제합니다."
                         IsEnabled="{Binding CanDeleteSelectedDateEntry}"
                         Command="{Binding DeleteSelectedDateEntryCommand}"/>
-                <Button Content="과업 삭제"
-                        Classes="danger"
+                <Button Grid.Column="1"
+                        Content="과업 삭제"
+                        Classes="danger-outline fit"
                         ToolTip.Tip="과업과 모든 하위 과업 및 날짜별 기록을 삭제합니다."
                         IsEnabled="{Binding CanEditExistingTask}"
                         Command="{Binding RequestDeleteTaskCommand}"/>
-                <Button Content="저장"
-                        Classes="primary"
+                <Button Grid.Column="2"
+                        Content="저장"
+                        Classes="primary fit"
                         ToolTip.Tip="저장 (Ctrl+S)"
                         IsEnabled="{Binding IsEditorEnabled}"
                         Command="{Binding SaveTaskCommand}"/>
-              </StackPanel>
+              </Grid>
             </Grid>
 
             <ScrollViewer x:Name="EditorScrollViewer"
