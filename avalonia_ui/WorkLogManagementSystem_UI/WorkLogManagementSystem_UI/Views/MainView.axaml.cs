@@ -32,6 +32,7 @@ public partial class MainView : UserControl
     private const double PreferredRegisterUserModalWidth = 520;
     private const double PreferredDeleteConfirmationModalWidth = 520;
     private const double PreferredUnsavedChangesModalWidth = 520;
+    private const double PreferredLoginModalWidth = 560;
     private const double TaskListDatePickerMinWidth = 200;
     private const double ModalViewportPadding = 24;
     private const int TaskPaneAnimationDurationMilliseconds = 180;
@@ -707,6 +708,7 @@ public partial class MainView : UserControl
 
     private void UpdateModalWidths(double width)
     {
+        LoginModalCard.Width = Math.Min(PreferredLoginModalWidth, Math.Max(0, width - ModalViewportPadding));
         SettingsModalCard.Width = Math.Min(PreferredSettingsModalWidth, Math.Max(0, width - ModalViewportPadding));
         RegisterUserModalCard.Width = Math.Min(PreferredRegisterUserModalWidth, Math.Max(0, width - ModalViewportPadding));
         DeleteTaskConfirmationModalCard.Width = Math.Min(

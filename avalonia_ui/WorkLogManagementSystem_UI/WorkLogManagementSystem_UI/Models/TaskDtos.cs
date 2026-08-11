@@ -196,7 +196,7 @@ public sealed class TokenResponse
 public sealed class UserDto
 {
     [JsonPropertyName("id")]
-    public int Id { get; set; }
+    public int? Id { get; set; }
 
     [JsonPropertyName("username")]
     public string Username { get; set; } = string.Empty;

@@ -907,7 +907,8 @@
             Padding="18"
             ZIndex="30"
             IsVisible="{Binding IsConnectionGateVisible}">
-      <Border Classes="modal-card"
+      <Border x:Name="LoginModalCard"
+              Classes="modal-card"
               MaxWidth="560">
         <StackPanel Spacing="18">
 	          <StackPanel Spacing="4">
