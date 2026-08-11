@@ -12,19 +12,23 @@ namespace WorkLogManagementSystem_UI.Services;
 
 public sealed class WorkLogApiClient : IDisposable
 {
+    public static readonly TimeSpan DefaultRequestTimeout = TimeSpan.FromSeconds(15);
+
     private readonly HttpClient _httpClient;
 
     public WorkLogApiClient(
         string baseUrl,
         string? accessToken = null,
         Func<(string AccessToken, string RefreshToken)>? tokenProvider = null,
-        Func<TokenResponse, Task>? tokenUpdated = null)
+        Func<TokenResponse, Task>? tokenUpdated = null,
+        TimeSpan? requestTimeout = null)
     {
         Uri baseAddress = new(NormalizeBaseUrl(baseUrl));
         _httpClient = tokenProvider is not null && tokenUpdated is not null
             ? new HttpClient(new RefreshingAuthHandler(baseAddress, tokenProvider, tokenUpdated))
             : new HttpClient();
         _httpClient.BaseAddress = baseAddress;
+        _httpClient.Timeout = requestTimeout ?? DefaultRequestTimeout;
         if (!string.IsNullOrWhiteSpace(accessToken))
         {
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Trim());

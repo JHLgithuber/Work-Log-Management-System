@@ -887,7 +887,7 @@
               MaxHeight="420">
         <Grid RowDefinitions="Auto,*,Auto"
               RowSpacing="16">
-          <TextBlock Text="연결 실패"
+          <TextBlock Text="{Binding ConnectionErrorDialogTitle}"
                      Grid.Row="0"
                      FontSize="20"
                      FontWeight="SemiBold"

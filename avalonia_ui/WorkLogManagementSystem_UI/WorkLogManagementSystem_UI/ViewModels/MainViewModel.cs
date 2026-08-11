@@ -30,11 +30,14 @@ public partial class MainViewModel : ViewModelBase
     private static readonly DateTime UnboundedEnd = DateTime.MaxValue;
     private readonly HashSet<int> _expandedTaskIds = new();
     private static readonly TimeSpan BackendTimezoneOffset = TimeSpan.FromHours(9);
+    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan HeartbeatRequestTimeout = TimeSpan.FromSeconds(3);
     private static readonly CultureInfo KoreanCulture = CultureInfo.GetCultureInfo("ko-KR");
     private readonly ExportFileService _exportFileService = new();
     private readonly AppSettingsService _settingsService = new();
     private readonly ICredentialStore _credentialStore = PlatformCredentialStore.Create();
     private readonly DispatcherTimer _lastSaveTimer = new();
+    private readonly DispatcherTimer _heartbeatTimer = new();
     private CancellationTokenSource? _loadCancellationTokenSource;
     private CancellationTokenSource? _dailyNoteCancellationTokenSource;
     private DateTimeOffset? _lastSavedAt;
@@ -45,6 +48,9 @@ public partial class MainViewModel : ViewModelBase
     private string _pendingParentTaskTitle = string.Empty;
     private bool _isApplyingTaskSelection;
     private bool _suppressEditorDirtyTracking;
+    private bool _isHeartbeatCheckRunning;
+    private bool _heartbeatFailureNotified;
+    private int _activeSaveOperationCount;
     private int _dailyNoteOperationVersion;
 
     [ObservableProperty] private string _apiBaseUrl = AppDefaultsService.Load().ApiBaseUrl;
@@ -94,6 +100,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string _newUserPassword = string.Empty;
     [ObservableProperty] private string _newUserPasswordConfirm = string.Empty;
     [ObservableProperty] private bool _isConnectionErrorDialogOpen;
+    [ObservableProperty] private string _connectionErrorDialogTitle = "서버 통신 실패";
     [ObservableProperty] private string _connectionErrorMessage = string.Empty;
     [ObservableProperty] private string _connectionErrorHtml = string.Empty;
     [ObservableProperty] private bool _isConnectionErrorHtml;
@@ -120,6 +127,9 @@ public partial class MainViewModel : ViewModelBase
         _lastSaveTimer.Interval = TimeSpan.FromSeconds(1);
         _lastSaveTimer.Tick += OnLastSaveTimerTick;
         _lastSaveTimer.Start();
+        _heartbeatTimer.Interval = HeartbeatInterval;
+        _heartbeatTimer.Tick += OnHeartbeatTimerTick;
+        _heartbeatTimer.Start();
         LoadPersistedSettings();
         ConnectionGateApiBaseUrl = ApiBaseUrl;
         _ = InitializeConnectionAsync();
@@ -312,6 +322,10 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsConnectionGateVisible));
         OnPropertyChanged(nameof(IsLoggedInStatusVisible));
         OnPropertyChanged(nameof(CanEditDailyNote));
+        if (value)
+        {
+            _heartbeatFailureNotified = false;
+        }
     }
 
     partial void OnIsAuthenticatedChanged(bool value)
@@ -415,12 +429,13 @@ public partial class MainViewModel : ViewModelBase
                 ClearEditor();
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
         catch (Exception error)
         {
             StatusMessage = $"로드 실패: {error.Message}";
+            ShowServerCommunicationFailure(error, "과업 로드 실패");
         }
     }
 
@@ -449,7 +464,7 @@ public partial class MainViewModel : ViewModelBase
                 DailyNoteContent = note.Content;
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
         catch (Exception error)
@@ -458,6 +473,7 @@ public partial class MainViewModel : ViewModelBase
             {
                 DailyNoteContent = string.Empty;
                 StatusMessage = $"비고 로드 실패: {error.Message}";
+                ShowServerCommunicationFailure(error, "비고 로드 실패");
             }
         }
         finally
@@ -481,6 +497,7 @@ public partial class MainViewModel : ViewModelBase
         _dailyNoteCancellationTokenSource?.Cancel();
         int operationVersion = ++_dailyNoteOperationVersion;
         IsDailyNoteBusy = true;
+        BeginSaving();
         try
         {
             using WorkLogApiClient client = CreateAuthenticatedClient();
@@ -488,19 +505,21 @@ public partial class MainViewModel : ViewModelBase
                 noteDate,
                 new DailyNoteWriteRequest { Content = DailyNoteContent },
                 CancellationToken.None);
-            MarkSaved();
             if (operationVersion == _dailyNoteOperationVersion && SelectedDate?.Date == noteDate)
             {
                 DailyNoteContent = saved.Content;
                 StatusMessage = $"{noteDate:yyyy-MM-dd} 비고를 저장했습니다.";
             }
+            MarkSaved();
         }
         catch (Exception error)
         {
+            MarkSaveFailed();
             if (operationVersion == _dailyNoteOperationVersion)
             {
                 StatusMessage = $"비고 저장 실패: {error.Message}";
             }
+            ShowServerCommunicationFailure(error, "비고 저장 실패");
         }
         finally
         {
@@ -581,6 +600,8 @@ public partial class MainViewModel : ViewModelBase
             return false;
         }
 
+        BeginSaving();
+        bool saveStateCompleted = false;
         try
         {
             TaskWriteRequest request = BuildWriteRequest();
@@ -606,6 +627,7 @@ public partial class MainViewModel : ViewModelBase
             HasUnsavedTaskChanges = false;
             EditorDisplayTitle = savedTask.Title;
             MarkSaved();
+            saveStateCompleted = true;
             await LoadTasksAsync();
             SelectedTask = FindTaskById(Tasks, savedTask.Id);
             StatusMessage = $"저장됨: {savedTask.Title}";
@@ -613,7 +635,12 @@ public partial class MainViewModel : ViewModelBase
         }
         catch (Exception error)
         {
+            if (!saveStateCompleted)
+            {
+                MarkSaveFailed();
+            }
             StatusMessage = $"저장 실패: {error.Message}";
+            ShowServerCommunicationFailure(error, "저장 실패");
             return false;
         }
     }
@@ -692,6 +719,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception error)
         {
             StatusMessage = $"해당일 기록 삭제 실패: {error.Message}";
+            ShowServerCommunicationFailure(error, "당일 기록 삭제 실패");
         }
     }
 
@@ -735,6 +763,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception error)
         {
             StatusMessage = $"삭제 실패: {error.Message}";
+            ShowServerCommunicationFailure(error, "과업 삭제 실패");
         }
     }
 
@@ -842,6 +871,7 @@ public partial class MainViewModel : ViewModelBase
     private void DismissConnectionError()
     {
         IsConnectionErrorDialogOpen = false;
+        ConnectionErrorDialogTitle = "서버 통신 실패";
         ConnectionErrorMessage = string.Empty;
         ConnectionErrorHtml = string.Empty;
         IsConnectionErrorHtml = false;
@@ -906,7 +936,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception error)
         {
             IsAuthenticated = false;
-            ShowConnectionErrorDialogIfHtml(error, "로그인 실패");
+            ShowServerCommunicationFailure(error, "로그인 실패");
             ConnectionGateErrorMessage = CreateConnectionGateErrorMessage(error, "로그인 실패");
             ConnectionGateStatusMessage = string.Empty;
             StatusMessage = "로그인 실패.";
@@ -935,6 +965,7 @@ public partial class MainViewModel : ViewModelBase
         RefreshToken = string.Empty;
         CurrentUsername = string.Empty;
         CurrentDisplayName = string.Empty;
+        _activeSaveOperationCount = 0;
         _lastSavedAt = null;
         UpdateLastSaveElapsedLabel();
         IsAuthenticated = false;
@@ -987,6 +1018,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception error)
         {
             ChangePasswordErrorMessage = $"비밀번호 변경 실패: {error.Message}";
+            ShowServerCommunicationFailure(error, "비밀번호 변경 실패");
         }
     }
 
@@ -1032,6 +1064,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception error)
         {
             RegisterUserErrorMessage = $"사용자 추가 실패: {error.Message}";
+            ShowServerCommunicationFailure(error, "사용자 추가 실패");
         }
     }
 
@@ -1068,7 +1101,7 @@ public partial class MainViewModel : ViewModelBase
         }
         catch (Exception error)
         {
-            ShowConnectionErrorDialog(error, "백엔드 연결 확인에 실패했습니다.");
+            ShowServerCommunicationFailure(error, "백엔드 연결 확인 실패");
             SettingsErrorMessage = "연결 확인에 실패했습니다.";
             StatusMessage = "설정 저장 실패.";
         }
@@ -1115,8 +1148,9 @@ public partial class MainViewModel : ViewModelBase
                     LoginUsername = currentUser.Username;
                     IsAuthenticated = true;
                 }
-                catch
+                catch (Exception error)
                 {
+                    ShowServerCommunicationFailure(error, "저장된 로그인 확인 실패");
                     AccessToken = string.Empty;
                     RefreshToken = string.Empty;
                     CurrentUsername = string.Empty;
@@ -1144,7 +1178,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception error)
         {
             IsBackendConnected = false;
-            ShowConnectionErrorDialogIfHtml(error, "연결 확인 실패");
+            ShowServerCommunicationFailure(error, "연결 확인 실패");
             ConnectionGateErrorMessage = CreateConnectionGateErrorMessage(error, "연결 확인 실패");
             ConnectionGateStatusMessage = string.Empty;
             StatusMessage = "백엔드 연결 실패.";
@@ -1209,6 +1243,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception error)
         {
             StatusMessage = $"엑셀 내보내기 실패: {error.Message}";
+            ShowServerCommunicationFailure(error, "엑셀 내보내기 실패");
         }
     }
 
@@ -1508,9 +1543,26 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    private void BeginSaving()
+    {
+        _activeSaveOperationCount++;
+        LastSaveElapsedLabel = "저장 중...";
+    }
+
     private void MarkSaved()
     {
         _lastSavedAt = DateTimeOffset.Now;
+        CompleteSaveOperation();
+    }
+
+    private void MarkSaveFailed()
+    {
+        CompleteSaveOperation();
+    }
+
+    private void CompleteSaveOperation()
+    {
+        _activeSaveOperationCount = Math.Max(0, _activeSaveOperationCount - 1);
         UpdateLastSaveElapsedLabel();
     }
 
@@ -1521,6 +1573,12 @@ public partial class MainViewModel : ViewModelBase
 
     private void UpdateLastSaveElapsedLabel()
     {
+        if (_activeSaveOperationCount > 0)
+        {
+            LastSaveElapsedLabel = "저장 중...";
+            return;
+        }
+
         if (_lastSavedAt is null)
         {
             LastSaveElapsedLabel = "마지막 저장 없음";
@@ -1536,15 +1594,69 @@ public partial class MainViewModel : ViewModelBase
         return new AppSettingsResult(ApiBaseUrl, ThemeMode, AccessToken, RefreshToken, CurrentUsername);
     }
 
+    private async void OnHeartbeatTimerTick(object? sender, EventArgs eventArgs)
+    {
+        if (_isHeartbeatCheckRunning ||
+            IsConnectionBusy ||
+            (!IsBackendConnected && !_heartbeatFailureNotified))
+        {
+            return;
+        }
+
+        _isHeartbeatCheckRunning = true;
+        try
+        {
+            using WorkLogApiClient client = new(
+                ApiBaseUrl,
+                requestTimeout: HeartbeatRequestTimeout);
+            await client.CheckConnectionAsync(CancellationToken.None);
+            bool connectionRecovered = _heartbeatFailureNotified;
+            IsBackendConnected = true;
+            if (connectionRecovered)
+            {
+                StatusMessage = "서버 연결이 복구되었습니다.";
+            }
+            _heartbeatFailureNotified = false;
+        }
+        catch (Exception error)
+        {
+            StatusMessage = $"서버 연결 확인 실패: {CreateServerCommunicationErrorMessage(error)}";
+            if (!_heartbeatFailureNotified)
+            {
+                _heartbeatFailureNotified = true;
+                IsBackendConnected = false;
+                ShowServerCommunicationFailure(error, "서버 연결 끊김", suppressIfDialogOpen: true);
+            }
+        }
+        finally
+        {
+            _isHeartbeatCheckRunning = false;
+        }
+    }
+
+    private void ShowServerCommunicationFailure(
+        Exception error,
+        string title,
+        bool suppressIfDialogOpen = false)
+    {
+        if (suppressIfDialogOpen && IsConnectionErrorDialogOpen)
+        {
+            return;
+        }
+
+        ShowConnectionErrorDialog(error, title);
+    }
+
     private void ShowConnectionErrorDialog(Exception error, string title)
     {
-        ConnectionErrorMessage = $"{title}\n{error.Message}";
+        ConnectionErrorDialogTitle = title;
+        ConnectionErrorMessage = CreateServerCommunicationErrorMessage(error);
         ConnectionErrorHtml = string.Empty;
         IsConnectionErrorHtml = false;
 
         if (error is ApiRequestException { IsHtmlResponse: true } apiError)
         {
-            ConnectionErrorMessage = $"{title}\n{(int)apiError.StatusCode} {apiError.ReasonPhrase}";
+            ConnectionErrorMessage = $"{(int)apiError.StatusCode} {apiError.ReasonPhrase}";
             ConnectionErrorHtml = apiError.ResponseBody;
             IsConnectionErrorHtml = true;
         }
@@ -1552,12 +1664,27 @@ public partial class MainViewModel : ViewModelBase
         IsConnectionErrorDialogOpen = true;
     }
 
-    private void ShowConnectionErrorDialogIfHtml(Exception error, string title)
+    private static string CreateServerCommunicationErrorMessage(Exception error)
     {
-        if (error is ApiRequestException { IsHtmlResponse: true })
+        if (IsTimeoutError(error))
         {
-            ShowConnectionErrorDialog(error, title);
+            return "서버 응답 제한 시간을 초과했습니다. 서버 상태와 네트워크 연결을 확인하세요.";
         }
+
+        return error.Message;
+    }
+
+    private static bool IsTimeoutError(Exception error)
+    {
+        for (Exception? current = error; current is not null; current = current.InnerException)
+        {
+            if (current is TimeoutException || current is OperationCanceledException)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string CreateConnectionGateErrorMessage(Exception error, string title)
@@ -1567,7 +1694,7 @@ public partial class MainViewModel : ViewModelBase
             return $"{title}: 서버가 HTML 오류 페이지를 반환했습니다. 연결 실패 다이얼로그를 확인하세요.";
         }
 
-        return $"{title}: {error.Message}";
+        return $"{title}: {CreateServerCommunicationErrorMessage(error)}";
     }
 
     private void ClearSettingsAccountFields()
