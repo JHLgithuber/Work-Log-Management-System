@@ -1,13 +1,18 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Final
 
-from sqlalchemy import create_engine, event, inspect, text
-from sqlalchemy.engine import Connection, Engine, make_url
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import event, inspect, text
+from sqlalchemy.engine import Connection, make_url
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.domain import Base
 from app.settings import settings
@@ -15,6 +20,8 @@ from app.settings import settings
 
 class Database:
     _DEFAULT_PATH: Final[Path] = Path(__file__).resolve().parent.parent / "worklog.sqlite3"
+    _POOL_WAIT_TIMEOUT_SECONDS: Final[float] = 5.0
+    _SQLITE_LOCK_TIMEOUT_SECONDS: Final[float] = 5.0
 
     def __init__(self, database_path: Path | None = None, database_url: str | None = None) -> None:
         self._database_path: Path = database_path or self._DEFAULT_PATH
@@ -23,31 +30,51 @@ class Database:
         )
         url = make_url(self._database_url)
         is_sqlite: bool = url.drivername.startswith("sqlite")
-        connect_args: dict[str, object] = {"check_same_thread": False} if is_sqlite else {}
-        self._engine: Engine = create_engine(
-            self._database_url,
-            connect_args=connect_args,
-            pool_pre_ping=True,
+        connect_args: dict[str, object] = (
+            {"timeout": self._SQLITE_LOCK_TIMEOUT_SECONDS}
+            if is_sqlite
+            else {"connect_timeout": int(self._POOL_WAIT_TIMEOUT_SECONDS)}
         )
-        self._session_factory: sessionmaker[Session] = sessionmaker(
+        engine_options: dict[str, object] = {
+            "connect_args": connect_args,
+            "pool_pre_ping": True,
+        }
+        if not is_sqlite:
+            engine_options["pool_timeout"] = self._POOL_WAIT_TIMEOUT_SECONDS
+            engine_options["pool_recycle"] = 300
+
+        self._engine: AsyncEngine = create_async_engine(self._database_url, **engine_options)
+        self._session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
             bind=self._engine,
             expire_on_commit=False,
         )
         if is_sqlite:
-            event.listen(self._engine, "connect", self._enable_foreign_keys)
+            event.listen(self._engine.sync_engine, "connect", self._enable_foreign_keys)
 
-    @contextmanager
-    def session(self) -> Iterator[Session]:
-        with self._session_factory() as session:
+    @asynccontextmanager
+    async def session(self) -> AsyncIterator[AsyncSession]:
+        async with self._session_factory() as session:
             yield session
 
-    def initialize(self) -> None:
-        Base.metadata.create_all(self._engine)
-        self._migrate_existing_schema()
+    async def initialize(self) -> None:
+        async with self._engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+            await connection.run_sync(self._migrate_existing_schema)
+
+    async def dispose(self) -> None:
+        await self._engine.dispose()
 
     def _normalize_database_url(self, database_url: str) -> str:
+        if database_url.startswith("sqlite+") or database_url.startswith("mysql+asyncmy://"):
+            return database_url
+        if database_url.startswith("sqlite://"):
+            return database_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
+        if database_url.startswith("mariadb+mariadbconnector://"):
+            return database_url.replace("mariadb+mariadbconnector://", "mysql+asyncmy://", 1)
         if database_url.startswith("mariadb://"):
-            return database_url.replace("mariadb://", "mariadb+mariadbconnector://", 1)
+            return database_url.replace("mariadb://", "mysql+asyncmy://", 1)
+        if database_url.startswith("mysql://"):
+            return database_url.replace("mysql://", "mysql+asyncmy://", 1)
         return database_url
 
     def _enable_foreign_keys(self, dbapi_connection: object, connection_record: object) -> None:
@@ -55,28 +82,27 @@ class Database:
         cursor.execute("PRAGMA foreign_keys = ON")
         cursor.close()
 
-    def _migrate_existing_schema(self) -> None:
-        with self._engine.begin() as connection:
-            table_names: set[str] = set(inspect(connection).get_table_names())
-            if "tasks" not in table_names:
-                return
+    def _migrate_existing_schema(self, connection: Connection) -> None:
+        table_names: set[str] = set(inspect(connection).get_table_names())
+        if "tasks" not in table_names:
+            return
 
-            self._migrate_users_schema(connection)
-            column_names: set[str] = self._task_column_names(connection)
-            dialect_name: str = connection.dialect.name
+        self._migrate_users_schema(connection)
+        column_names: set[str] = self._task_column_names(connection)
+        dialect_name: str = connection.dialect.name
 
-            if "priority" not in column_names:
-                priority_type = "TINYINT UNSIGNED" if dialect_name in {"mysql", "mariadb"} else "SMALLINT"
-                connection.execute(text(f"ALTER TABLE tasks ADD COLUMN priority {priority_type} NOT NULL DEFAULT 0"))
+        if "priority" not in column_names:
+            priority_type = "TINYINT UNSIGNED" if dialect_name in {"mysql", "mariadb"} else "SMALLINT"
+            connection.execute(text(f"ALTER TABLE tasks ADD COLUMN priority {priority_type} NOT NULL DEFAULT 0"))
 
-            column_names = self._task_column_names(connection)
-            if "user_id" not in column_names:
-                connection.execute(text("ALTER TABLE tasks ADD COLUMN user_id INTEGER NULL"))
+        column_names = self._task_column_names(connection)
+        if "user_id" not in column_names:
+            connection.execute(text("ALTER TABLE tasks ADD COLUMN user_id INTEGER NULL"))
 
-            if dialect_name in {"mysql", "mariadb"}:
-                self._ensure_mysql_task_user_constraints(connection)
+        if dialect_name in {"mysql", "mariadb"}:
+            self._ensure_mysql_task_user_constraints(connection)
 
-            self._move_single_legacy_user_tasks_to_admin(connection)
+        self._move_single_legacy_user_tasks_to_admin(connection)
 
     def _task_column_names(self, connection: Connection) -> set[str]:
         return {column["name"] for column in inspect(connection).get_columns("tasks")}

@@ -1,15 +1,21 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+import asyncio
 import hashlib
 import secrets
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
 from app.database import Database
 from app.domain import DateBounds, RefreshSession, User
-from app.security import AuthenticationError, create_access_token, hash_password, verify_password
+from app.security import (
+    AuthenticationError,
+    create_access_token,
+    hash_password,
+    verify_password,
+)
 from app.settings import settings
 
 
@@ -36,53 +42,54 @@ class AuthService:
     def __init__(self, database: Database) -> None:
         self._database = database
 
-    def register(self, username: str, password: str, display_name: str | None = None) -> AuthenticatedUser:
+    async def register(self, username: str, password: str, display_name: str | None = None) -> AuthenticatedUser:
         normalized_username = self._normalize_username(username)
         if self._is_admin_username(normalized_username):
             raise UserAlreadyExistsError(f"User {normalized_username} already exists.")
         self._validate_password(password)
         now: datetime = DateBounds.now()
-        with self._database.session() as session:
-            existing_user = session.scalar(select(User).where(User.username == normalized_username))
+        password_hash = await asyncio.to_thread(hash_password, password)
+        async with self._database.session() as session:
+            existing_user = await session.scalar(select(User).where(User.username == normalized_username))
             if existing_user is not None:
                 raise UserAlreadyExistsError(f"User {normalized_username} already exists.")
 
             user = User(
                 username=normalized_username,
-                password_hash=hash_password(password),
+                password_hash=password_hash,
                 display_name=(display_name or normalized_username).strip() or normalized_username,
                 created_at=now,
                 updated_at=now,
             )
             session.add(user)
-            session.commit()
+            await session.commit()
             return AuthenticatedUser(id=user.id, username=user.username, display_name=user.display_name)
 
-    def login(self, username: str, password: str) -> TokenPair:
-        user = self.authenticate(username, password)
-        return self._create_token_pair(user)
+    async def login(self, username: str, password: str) -> TokenPair:
+        user = await self.authenticate(username, password)
+        return await self._create_token_pair(user)
 
-    def refresh(self, refresh_token: str) -> TokenPair:
+    async def refresh(self, refresh_token: str) -> TokenPair:
         token_hash = self._refresh_token_hash(refresh_token)
         now = DateBounds.now()
-        with self._database.session() as session:
-            refresh_session = session.scalar(
+        async with self._database.session() as session:
+            refresh_session = await session.scalar(
                 select(RefreshSession).where(RefreshSession.token_hash == token_hash)
             )
             if refresh_session is None or refresh_session.expires_at < now:
                 if refresh_session is not None:
-                    session.delete(refresh_session)
-                    session.commit()
+                    await session.delete(refresh_session)
+                    await session.commit()
                 raise AuthenticationError("Refresh token is invalid or has expired.")
 
             username = refresh_session.username
-            session.delete(refresh_session)
-            session.commit()
+            await session.delete(refresh_session)
+            await session.commit()
 
-        user = self.get_user(username)
-        return self._create_token_pair(user)
+        user = await self.get_user(username)
+        return await self._create_token_pair(user)
 
-    def change_password(self, username: str, current_password: str, new_password: str) -> None:
+    async def change_password(self, username: str, current_password: str, new_password: str) -> None:
         normalized_username = self._normalize_username(username)
         self._validate_password(new_password)
         if self._is_admin_username(normalized_username):
@@ -91,20 +98,21 @@ class AuthService:
             raise AuthenticationError("The built-in admin password is configured by environment variables.")
 
         now: datetime = DateBounds.now()
-        with self._database.session() as session:
-            user = session.scalar(select(User).where(User.username == normalized_username))
-            if user is None or not verify_password(current_password, user.password_hash):
+        async with self._database.session() as session:
+            user = await session.scalar(select(User).where(User.username == normalized_username))
+            if user is None or not await asyncio.to_thread(verify_password, current_password, user.password_hash):
                 raise AuthenticationError("Invalid current password.")
 
-            user.password_hash = hash_password(new_password)
+            user.password_hash = await asyncio.to_thread(hash_password, new_password)
             user.updated_at = now
-            for refresh_session in session.scalars(
+            refresh_sessions = await session.scalars(
                 select(RefreshSession).where(RefreshSession.username == normalized_username)
-            ):
-                session.delete(refresh_session)
-            session.commit()
+            )
+            for refresh_session in refresh_sessions:
+                await session.delete(refresh_session)
+            await session.commit()
 
-    def _create_token_pair(self, user: AuthenticatedUser) -> TokenPair:
+    async def _create_token_pair(self, user: AuthenticatedUser) -> TokenPair:
         refresh_token = secrets.token_urlsafe(48)
         now = DateBounds.now()
         refresh_session = RefreshSession(
@@ -113,9 +121,9 @@ class AuthService:
             expires_at=now + timedelta(days=settings.jwt_refresh_token_expire_days),
             created_at=now,
         )
-        with self._database.session() as session:
+        async with self._database.session() as session:
             session.add(refresh_session)
-            session.commit()
+            await session.commit()
         return TokenPair(
             access_token=create_access_token(user.username, user.id),
             refresh_token=refresh_token,
@@ -125,24 +133,24 @@ class AuthService:
     def _refresh_token_hash(self, refresh_token: str) -> str:
         return hashlib.sha256(refresh_token.encode()).hexdigest()
 
-    def authenticate(self, username: str, password: str) -> AuthenticatedUser:
+    async def authenticate(self, username: str, password: str) -> AuthenticatedUser:
         normalized_username = self._normalize_username(username)
         if self._is_admin_credentials(normalized_username, password):
             return self._admin_user()
 
-        with self._database.session() as session:
-            user = session.scalar(select(User).where(User.username == normalized_username))
-            if user is None or not verify_password(password, user.password_hash):
+        async with self._database.session() as session:
+            user = await session.scalar(select(User).where(User.username == normalized_username))
+            if user is None or not await asyncio.to_thread(verify_password, password, user.password_hash):
                 raise AuthenticationError("Invalid username or password.")
             return AuthenticatedUser(id=user.id, username=user.username, display_name=user.display_name)
 
-    def get_user(self, username: str) -> AuthenticatedUser:
+    async def get_user(self, username: str) -> AuthenticatedUser:
         normalized_username = self._normalize_username(username)
         if self._is_admin_username(normalized_username):
             return self._admin_user()
 
-        with self._database.session() as session:
-            user = session.scalar(select(User).where(User.username == normalized_username))
+        async with self._database.session() as session:
+            user = await session.scalar(select(User).where(User.username == normalized_username))
             if user is None:
                 raise AuthenticationError("User was not found.")
             return AuthenticatedUser(id=user.id, username=user.username, display_name=user.display_name)

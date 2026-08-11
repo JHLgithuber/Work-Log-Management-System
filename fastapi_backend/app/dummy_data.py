@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 
@@ -42,19 +43,19 @@ class DummyDataSeeder:
             raise RuntimeError("Dummy data seeding requires enabled built-in admin credentials.")
         self._username: str = settings.admin_username
 
-    def seed(self) -> SeedResult:
+    async def seed(self) -> SeedResult:
         task_count: int = 0
         entry_count: int = 0
         for specification in self._build_specs():
-            seeded_task, child_task_count, child_entry_count = self._seed_task(None, specification)
+            seeded_task, child_task_count, child_entry_count = await self._seed_task(None, specification)
             task_count += 1 + child_task_count
             entry_count += len(seeded_task.entries) + child_entry_count
         return SeedResult(task_count=task_count, entry_count=entry_count)
 
-    def _seed_task(self, parent_id: int | None, specification: DummyTaskSpec) -> tuple[Task, int, int]:
-        task: Task = self._upsert_task(parent_id, specification)
+    async def _seed_task(self, parent_id: int | None, specification: DummyTaskSpec) -> tuple[Task, int, int]:
+        task: Task = await self._upsert_task(parent_id, specification)
         for entry_specification in specification.entries:
-            self._service.upsert_work_entry(
+            await self._service.upsert_work_entry(
                 self._username,
                 WorkEntryUpsert(
                     task_id=task.id,
@@ -67,16 +68,16 @@ class DummyDataSeeder:
         child_task_count: int = 0
         child_entry_count: int = 0
         for child_specification in specification.children:
-            child_task, nested_task_count, nested_entry_count = self._seed_task(task.id, child_specification)
+            child_task, nested_task_count, nested_entry_count = await self._seed_task(task.id, child_specification)
             child_task_count += 1 + nested_task_count
             child_entry_count += len(child_task.entries) + nested_entry_count
 
-        return self._service.get_task(self._username, task.id), child_task_count, child_entry_count
+        return await self._service.get_task(self._username, task.id), child_task_count, child_entry_count
 
-    def _upsert_task(self, parent_id: int | None, specification: DummyTaskSpec) -> Task:
-        existing_task: Task | None = self._find_existing_task(parent_id, specification.title)
+    async def _upsert_task(self, parent_id: int | None, specification: DummyTaskSpec) -> Task:
+        existing_task: Task | None = await self._find_existing_task(parent_id, specification.title)
         if existing_task is None:
-            return self._service.create_task(
+            return await self._service.create_task(
                 self._username,
                 TaskCreate(
                     parent_id=parent_id,
@@ -89,7 +90,7 @@ class DummyDataSeeder:
                 )
             )
 
-        return self._service.update_task(
+        return await self._service.update_task(
             self._username,
             existing_task.id,
             TaskUpdate(
@@ -103,8 +104,8 @@ class DummyDataSeeder:
             ),
         )
 
-    def _find_existing_task(self, parent_id: int | None, title: str) -> Task | None:
-        for root_task in self._service.list_all_tasks(self._username):
+    async def _find_existing_task(self, parent_id: int | None, title: str) -> Task | None:
+        for root_task in await self._service.list_all_tasks(self._username):
             found_task: Task | None = self._find_in_tree(root_task, parent_id, title)
             if found_task is not None:
                 return found_task
@@ -227,12 +228,19 @@ class DummyDataSeeder:
         return datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
 
 
-def main() -> None:
+async def _main() -> None:
     database: Database = Database()
-    database.initialize()
-    service: TaskService = TaskService(TaskRepository(database))
-    result: SeedResult = DummyDataSeeder(service).seed()
-    print(f"Seeded dummy worklog data: tasks={result.task_count}, entries={result.entry_count}")
+    try:
+        await database.initialize()
+        service: TaskService = TaskService(TaskRepository(database))
+        result: SeedResult = await DummyDataSeeder(service).seed()
+        print(f"Seeded dummy worklog data: tasks={result.task_count}, entries={result.entry_count}")
+    finally:
+        await database.dispose()
+
+
+def main() -> None:
+    asyncio.run(_main())
 
 
 if __name__ == "__main__":

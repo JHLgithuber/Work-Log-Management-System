@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import date, timedelta
 from typing import Annotated
 
@@ -20,7 +21,6 @@ from app.schemas import (
 )
 from app.security import AuthenticationError, decode_access_token
 from app.service import TaskService, TaskValidationError
-
 
 AuthorizationHeader = Annotated[str | None, Header(alias="Authorization")]
 
@@ -72,52 +72,70 @@ class TaskRouter:
         self.router.add_api_route("/{task_id}", self.update_task, methods=["PUT"], response_model=TaskResponse)
         self.router.add_api_route("/{task_id}", self.delete_task, methods=["DELETE"], status_code=204)
 
-    def list_tasks(self, authorization: AuthorizationHeader = None, target_date: date | None = None) -> list[TaskResponse]:
-        username: str = self._username(authorization)
-        tasks = (
-            self._service.list_all_tasks(username)
-            if target_date is None
-            else self._service.list_tasks_for_date(username, target_date)
-        )
+    async def list_tasks(
+        self,
+        authorization: AuthorizationHeader = None,
+        target_date: date | None = None,
+    ) -> list[TaskResponse]:
+        username: str = await self._username(authorization)
+        if target_date is None:
+            tasks = await self._service.list_all_tasks(username)
+        else:
+            tasks = await self._service.list_tasks_for_date(username, target_date)
         return [TaskResponse.from_domain(task) for task in tasks]
 
-    def get_task(self, task_id: int, authorization: AuthorizationHeader = None) -> TaskResponse:
+    async def get_task(self, task_id: int, authorization: AuthorizationHeader = None) -> TaskResponse:
         try:
-            return TaskResponse.from_domain(self._service.get_task(self._username(authorization), task_id))
+            username = await self._username(authorization)
+            return TaskResponse.from_domain(await self._service.get_task(username, task_id))
         except TaskNotFoundError as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
 
-    def create_task(self, request: TaskWriteRequest, authorization: AuthorizationHeader = None) -> TaskResponse:
+    async def create_task(self, request: TaskWriteRequest, authorization: AuthorizationHeader = None) -> TaskResponse:
         try:
-            task = self._service.create_task(self._username(authorization), request.to_create_command())
+            username = await self._username(authorization)
+            task = await self._service.create_task(username, request.to_create_command())
             return TaskResponse.from_domain(task)
         except (TaskValidationError, TaskNotFoundError, InvalidTaskHierarchyError) as error:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
 
-    def update_task(self, task_id: int, request: TaskWriteRequest, authorization: AuthorizationHeader = None) -> TaskResponse:
+    async def update_task(
+        self,
+        task_id: int,
+        request: TaskWriteRequest,
+        authorization: AuthorizationHeader = None,
+    ) -> TaskResponse:
         try:
-            task = self._service.update_task(self._username(authorization), task_id, request.to_update_command())
+            username = await self._username(authorization)
+            task = await self._service.update_task(username, task_id, request.to_update_command())
             return TaskResponse.from_domain(task)
         except TaskNotFoundError as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
         except (TaskValidationError, InvalidTaskHierarchyError) as error:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
 
-    def delete_task(self, task_id: int, authorization: AuthorizationHeader = None) -> Response:
+    async def delete_task(self, task_id: int, authorization: AuthorizationHeader = None) -> Response:
         try:
-            self._service.delete_task(self._username(authorization), task_id)
+            username = await self._username(authorization)
+            await self._service.delete_task(username, task_id)
             return Response(status_code=status.HTTP_204_NO_CONTENT)
         except TaskNotFoundError as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
 
-    def get_work_entry(self, task_id: int, entry_date: date, authorization: AuthorizationHeader = None) -> WorkEntryResponse:
+    async def get_work_entry(
+        self,
+        task_id: int,
+        entry_date: date,
+        authorization: AuthorizationHeader = None,
+    ) -> WorkEntryResponse:
         try:
-            entry = self._service.get_work_entry(self._username(authorization), task_id, entry_date)
+            username = await self._username(authorization)
+            entry = await self._service.get_work_entry(username, task_id, entry_date)
             return WorkEntryResponse.from_domain(entry)
         except TaskNotFoundError as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
 
-    def upsert_work_entry(
+    async def upsert_work_entry(
         self,
         task_id: int,
         entry_date: date,
@@ -125,38 +143,51 @@ class TaskRouter:
         authorization: AuthorizationHeader = None,
     ) -> WorkEntryResponse:
         try:
-            entry = self._service.upsert_work_entry(
-                self._username(authorization),
+            username = await self._username(authorization)
+            entry = await self._service.upsert_work_entry(
+                username,
                 request.to_upsert_command(task_id, entry_date),
             )
             return WorkEntryResponse.from_domain(entry)
         except TaskNotFoundError as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
 
-    def delete_work_entry(self, task_id: int, entry_date: date, authorization: AuthorizationHeader = None) -> Response:
+    async def delete_work_entry(
+        self,
+        task_id: int,
+        entry_date: date,
+        authorization: AuthorizationHeader = None,
+    ) -> Response:
         try:
-            self._service.delete_work_entry(self._username(authorization), task_id, entry_date)
+            username = await self._username(authorization)
+            await self._service.delete_work_entry(username, task_id, entry_date)
             return Response(status_code=status.HTTP_204_NO_CONTENT)
         except TaskNotFoundError as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
 
-    def get_daily_note(self, note_date: date, authorization: AuthorizationHeader = None) -> DailyNoteResponse:
-        note = self._service.get_daily_note(self._username(authorization), note_date)
+    async def get_daily_note(
+        self,
+        note_date: date,
+        authorization: AuthorizationHeader = None,
+    ) -> DailyNoteResponse:
+        username = await self._username(authorization)
+        note = await self._service.get_daily_note(username, note_date)
         return DailyNoteResponse.from_domain(note)
 
-    def upsert_daily_note(
+    async def upsert_daily_note(
         self,
         note_date: date,
         request: DailyNoteWriteRequest,
         authorization: AuthorizationHeader = None,
     ) -> DailyNoteResponse:
-        note = self._service.upsert_daily_note(
-            self._username(authorization),
+        username = await self._username(authorization)
+        note = await self._service.upsert_daily_note(
+            username,
             request.to_upsert_command(note_date),
         )
         return DailyNoteResponse.from_domain(note)
 
-    def export_tasks(
+    async def export_tasks(
         self,
         authorization: AuthorizationHeader = None,
         start_date: date | None = None,
@@ -172,15 +203,18 @@ class TaskRouter:
             )
 
         generated_at: str = DateBounds.now().strftime("%Y%m%d_%H%M%S")
-        username: str = self._username(authorization)
+        username: str = await self._username(authorization)
         try:
-            content: bytes = self._exporter.export(
-                self._service.list_all_tasks(username),
-                daily_notes=self._service.list_daily_notes(
-                    username,
-                    start_date or date.min,
-                    end_date or date.max,
-                ),
+            tasks = await self._service.list_all_tasks(username)
+            daily_notes = await self._service.list_daily_notes(
+                username,
+                start_date or date.min,
+                end_date or date.max,
+            )
+            content: bytes = await asyncio.to_thread(
+                self._exporter.export,
+                tasks,
+                daily_notes=daily_notes,
                 start_date=start_date,
                 end_date=end_date,
             )
@@ -203,7 +237,7 @@ class TaskRouter:
             next_month_first_day = date(today.year, today.month + 1, 1)
         return first_day, next_month_first_day - timedelta(days=1)
 
-    def _username(self, authorization: str | None) -> str:
+    async def _username(self, authorization: str | None) -> str:
         if authorization is None or not authorization.startswith("Bearer "):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -213,7 +247,7 @@ class TaskRouter:
 
         try:
             payload = decode_access_token(authorization.removeprefix("Bearer ").strip())
-            user = self._auth_service.get_user(str(payload["sub"]))
+            user = await self._auth_service.get_user(str(payload["sub"]))
             return user.username
         except AuthenticationError as error:
             raise HTTPException(

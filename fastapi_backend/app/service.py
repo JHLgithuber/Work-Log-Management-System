@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from app.domain import DailyNote, DailyNoteUpsert, DateBounds, Task, TaskCreate, TaskUpdate, WorkEntry, WorkEntryUpsert
+from app.domain import (
+    DailyNote,
+    DailyNoteUpsert,
+    DateBounds,
+    Task,
+    TaskCreate,
+    TaskUpdate,
+    WorkEntry,
+    WorkEntryUpsert,
+)
 from app.repository import TaskRepository
 
 
@@ -14,47 +23,47 @@ class TaskService:
     def __init__(self, repository: TaskRepository) -> None:
         self._repository: TaskRepository = repository
 
-    def create_task(self, username: str, command: TaskCreate) -> Task:
+    async def create_task(self, username: str, command: TaskCreate) -> Task:
         self._validate_dates(command.start_at, command.due_at, command.actual_end_at)
         self._validate_priority(command.priority)
-        return self._repository.create(username, self._normalize_create(command))
+        return await self._repository.create(username, self._normalize_create(command))
 
-    def update_task(self, username: str, task_id: int, command: TaskUpdate) -> Task:
+    async def update_task(self, username: str, task_id: int, command: TaskUpdate) -> Task:
         self._validate_dates(command.start_at, command.due_at, command.actual_end_at)
         self._validate_priority(command.priority)
-        return self._repository.update(username, task_id, self._normalize_update(command))
+        return await self._repository.update(username, task_id, self._normalize_update(command))
 
-    def delete_task(self, username: str, task_id: int) -> None:
-        self._repository.delete(username, task_id)
+    async def delete_task(self, username: str, task_id: int) -> None:
+        await self._repository.delete(username, task_id)
 
-    def get_task(self, username: str, task_id: int) -> Task:
-        return self._repository.get_required(username, task_id)
+    async def get_task(self, username: str, task_id: int) -> Task:
+        return await self._repository.get_required(username, task_id)
 
-    def get_work_entry(self, username: str, task_id: int, entry_date: date) -> WorkEntry:
-        return self._repository.get_work_entry(username, task_id, entry_date)
+    async def get_work_entry(self, username: str, task_id: int, entry_date: date) -> WorkEntry:
+        return await self._repository.get_work_entry(username, task_id, entry_date)
 
-    def upsert_work_entry(self, username: str, command: WorkEntryUpsert) -> WorkEntry:
-        return self._repository.upsert_work_entry(username, command)
+    async def upsert_work_entry(self, username: str, command: WorkEntryUpsert) -> WorkEntry:
+        return await self._repository.upsert_work_entry(username, command)
 
-    def delete_work_entry(self, username: str, task_id: int, entry_date: date) -> None:
-        self._repository.delete_work_entry(username, task_id, entry_date)
+    async def delete_work_entry(self, username: str, task_id: int, entry_date: date) -> None:
+        await self._repository.delete_work_entry(username, task_id, entry_date)
 
-    def list_tasks_for_date(self, username: str, target_date: date) -> list[Task]:
+    async def list_tasks_for_date(self, username: str, target_date: date) -> list[Task]:
         day_start: datetime = DateBounds.start_of_day(target_date)
         day_end: datetime = DateBounds.end_of_day(target_date)
-        return self._repository.list_for_date(username, day_start, day_end)
+        return await self._repository.list_for_date(username, day_start, day_end)
 
-    def list_all_tasks(self, username: str) -> list[Task]:
-        return self._repository.list_all(username)
+    async def list_all_tasks(self, username: str) -> list[Task]:
+        return await self._repository.list_all(username)
 
-    def get_daily_note(self, username: str, note_date: date) -> DailyNote:
-        return self._repository.get_daily_note(username, note_date)
+    async def get_daily_note(self, username: str, note_date: date) -> DailyNote:
+        return await self._repository.get_daily_note(username, note_date)
 
-    def upsert_daily_note(self, username: str, command: DailyNoteUpsert) -> DailyNote:
-        return self._repository.upsert_daily_note(username, command)
+    async def upsert_daily_note(self, username: str, command: DailyNoteUpsert) -> DailyNote:
+        return await self._repository.upsert_daily_note(username, command)
 
-    def list_daily_notes(self, username: str, start_date: date, end_date: date) -> list[DailyNote]:
-        return self._repository.list_daily_notes(username, start_date, end_date)
+    async def list_daily_notes(self, username: str, start_date: date, end_date: date) -> list[DailyNote]:
+        return await self._repository.list_daily_notes(username, start_date, end_date)
 
     def _validate_dates(self, start_at: datetime, due_at: datetime, actual_end_at: datetime | None) -> None:
         normalized_start: datetime = DateBounds.start_of_day(start_at)

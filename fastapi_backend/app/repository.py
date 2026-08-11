@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import delete, func, select
-from sqlalchemy.orm import Session, with_loader_criteria
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import with_loader_criteria
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.database import Database
 from app.domain import (
@@ -32,11 +34,11 @@ class TaskRepository:
     def __init__(self, database: Database) -> None:
         self._database: Database = database
 
-    def create(self, username: str, command: TaskCreate) -> Task:
+    async def create(self, username: str, command: TaskCreate) -> Task:
         now: datetime = DateBounds.now()
-        with self._database.session() as session:
-            user_id: int | None = self._resolve_user_id(session, username)
-            self._assert_parent_exists(session, user_id, command.parent_id)
+        async with self._database.session() as session:
+            user_id: int | None = await self._resolve_user_id(session, username)
+            await self._assert_parent_exists(session, user_id, command.parent_id)
             task = Task(
                 user_id=user_id,
                 parent_id=command.parent_id,
@@ -50,17 +52,17 @@ class TaskRepository:
                 updated_at=now,
             )
             session.add(task)
-            session.commit()
+            await session.commit()
             task_id: int = task.id
-        return self.get_required(username, task_id)
+        return await self.get_required(username, task_id)
 
-    def update(self, username: str, task_id: int, command: TaskUpdate) -> Task:
+    async def update(self, username: str, task_id: int, command: TaskUpdate) -> Task:
         now: datetime = DateBounds.now()
-        with self._database.session() as session:
-            user_id: int | None = self._resolve_user_id(session, username)
-            task: Task = self._get_required_model(session, user_id, task_id)
-            self._assert_parent_exists(session, user_id, command.parent_id)
-            self._assert_not_descendant_parent(session, user_id, task_id, command.parent_id)
+        async with self._database.session() as session:
+            user_id: int | None = await self._resolve_user_id(session, username)
+            task: Task = await self._get_required_model(session, user_id, task_id)
+            await self._assert_parent_exists(session, user_id, command.parent_id)
+            await self._assert_not_descendant_parent(session, user_id, task_id, command.parent_id)
 
             task.parent_id = command.parent_id
             task.title = command.title
@@ -70,72 +72,54 @@ class TaskRepository:
             task.due_at = command.due_at
             task.actual_end_at = command.actual_end_at
             task.updated_at = now
-            session.commit()
-        return self.get_required(username, task_id)
+            await session.commit()
+        return await self.get_required(username, task_id)
 
-    def delete(self, username: str, task_id: int) -> None:
-        with self._database.session() as session:
-            user_id: int | None = self._resolve_user_id(session, username)
-            task: Task = self._get_required_model(session, user_id, task_id)
-            session.delete(task)
-            session.commit()
+    async def delete(self, username: str, task_id: int) -> None:
+        async with self._database.session() as session:
+            user_id: int | None = await self._resolve_user_id(session, username)
+            task: Task = await self._get_required_model(session, user_id, task_id)
+            await session.delete(task)
+            await session.commit()
 
-    def get_required(self, username: str, task_id: int) -> Task:
-        with self._database.session() as session:
-            user_id: int | None = self._resolve_user_id(session, username)
-            task: Task = self._get_required_model(session, user_id, task_id)
-            self._load_graph(task)
+    async def get_required(self, username: str, task_id: int) -> Task:
+        async with self._database.session() as session:
+            user_id: int | None = await self._resolve_user_id(session, username)
+            tasks: list[Task] = await self._load_task_graph(session, user_id)
+            task = next((item for item in tasks if item.id == task_id), None)
+            if task is None:
+                raise TaskNotFoundError(f"Task {task_id} was not found.")
             return task
 
-    def list_for_date(self, username: str, target_start: datetime, target_end: datetime) -> list[Task]:
-        with self._database.session() as session:
-            user_id: int | None = self._resolve_user_id(session, username)
-            matched_tasks: list[Task] = list(
-                session.scalars(
-                    select(Task).where(
-                        self._task_user_filter(user_id),
-                        Task.start_at <= target_end,
-                        func.coalesce(Task.actual_end_at, Task.due_at) >= target_start,
-                    ).options(self._task_scope(user_id))
-                )
-            )
-            root_ids: set[int] = {self._root_id(session, user_id, task) for task in matched_tasks}
-            if not root_ids:
-                return []
+    async def list_for_date(self, username: str, target_start: datetime, target_end: datetime) -> list[Task]:
+        async with self._database.session() as session:
+            user_id: int | None = await self._resolve_user_id(session, username)
+            tasks: list[Task] = await self._load_task_graph(session, user_id)
+            tasks_by_id: dict[int, Task] = {task.id: task for task in tasks}
+            root_ids: set[int] = {
+                self._root_id_from_loaded_graph(tasks_by_id, task)
+                for task in tasks
+                if task.start_at <= target_end and (task.actual_end_at or task.due_at) >= target_start
+            }
+            return [
+                task
+                for task in tasks
+                if task.id in root_ids
+            ]
 
-            root_tasks: list[Task] = list(
-                session.scalars(
-                    select(Task)
-                    .where(self._task_user_filter(user_id), Task.id.in_(root_ids))
-                    .options(self._task_scope(user_id))
-                    .order_by(Task.start_at, Task.id)
-                )
-            )
-            for task in root_tasks:
-                self._load_graph(task)
-            return root_tasks
+    async def list_all(self, username: str) -> list[Task]:
+        async with self._database.session() as session:
+            user_id: int | None = await self._resolve_user_id(session, username)
+            tasks: list[Task] = await self._load_task_graph(session, user_id)
+            task_ids = {task.id for task in tasks}
+            return [task for task in tasks if task.parent_id is None or task.parent_id not in task_ids]
 
-    def list_all(self, username: str) -> list[Task]:
-        with self._database.session() as session:
-            user_id: int | None = self._resolve_user_id(session, username)
-            root_tasks: list[Task] = list(
-                session.scalars(
-                    select(Task)
-                    .where(self._task_user_filter(user_id), Task.parent_id.is_(None))
-                    .options(self._task_scope(user_id))
-                    .order_by(Task.start_at, Task.id)
-                )
-            )
-            for task in root_tasks:
-                self._load_graph(task)
-            return root_tasks
-
-    def upsert_work_entry(self, username: str, command: WorkEntryUpsert) -> WorkEntry:
+    async def upsert_work_entry(self, username: str, command: WorkEntryUpsert) -> WorkEntry:
         now: datetime = DateBounds.now()
-        with self._database.session() as session:
-            user_id: int | None = self._resolve_user_id(session, username)
-            self._assert_task_exists(session, user_id, command.task_id)
-            entry: WorkEntry | None = session.scalar(
+        async with self._database.session() as session:
+            user_id: int | None = await self._resolve_user_id(session, username)
+            await self._assert_task_exists(session, user_id, command.task_id)
+            entry: WorkEntry | None = await session.scalar(
                 select(WorkEntry).where(
                     WorkEntry.task_id == command.task_id,
                     WorkEntry.entry_date == command.entry_date,
@@ -157,14 +141,14 @@ class TaskRepository:
                 entry.retrospective = command.retrospective
                 entry.updated_at = now
 
-            session.commit()
-        return self.get_work_entry(username, command.task_id, command.entry_date)
+            await session.commit()
+        return await self.get_work_entry(username, command.task_id, command.entry_date)
 
-    def get_work_entry(self, username: str, task_id: int, entry_date: date) -> WorkEntry:
-        with self._database.session() as session:
-            user_id: int | None = self._resolve_user_id(session, username)
-            self._assert_task_exists(session, user_id, task_id)
-            entry: WorkEntry | None = session.scalar(
+    async def get_work_entry(self, username: str, task_id: int, entry_date: date) -> WorkEntry:
+        async with self._database.session() as session:
+            user_id: int | None = await self._resolve_user_id(session, username)
+            await self._assert_task_exists(session, user_id, task_id)
+            entry: WorkEntry | None = await session.scalar(
                 select(WorkEntry).where(
                     WorkEntry.task_id == task_id,
                     WorkEntry.entry_date == entry_date,
@@ -184,22 +168,22 @@ class TaskRepository:
             updated_at=now,
         )
 
-    def delete_work_entry(self, username: str, task_id: int, entry_date: date) -> None:
-        with self._database.session() as session:
-            user_id: int | None = self._resolve_user_id(session, username)
-            self._assert_task_exists(session, user_id, task_id)
-            session.execute(
+    async def delete_work_entry(self, username: str, task_id: int, entry_date: date) -> None:
+        async with self._database.session() as session:
+            user_id: int | None = await self._resolve_user_id(session, username)
+            await self._assert_task_exists(session, user_id, task_id)
+            await session.execute(
                 delete(WorkEntry).where(
                     WorkEntry.task_id == task_id,
                     WorkEntry.entry_date == entry_date,
                 )
             )
-            session.commit()
+            await session.commit()
 
-    def get_daily_note(self, username: str, note_date: date) -> DailyNote:
+    async def get_daily_note(self, username: str, note_date: date) -> DailyNote:
         normalized_username: str = username.strip()
-        with self._database.session() as session:
-            note: DailyNote | None = session.scalar(
+        async with self._database.session() as session:
+            note: DailyNote | None = await session.scalar(
                 select(DailyNote).where(
                     DailyNote.username == normalized_username,
                     DailyNote.note_date == note_date,
@@ -218,11 +202,11 @@ class TaskRepository:
             updated_at=now,
         )
 
-    def upsert_daily_note(self, username: str, command: DailyNoteUpsert) -> DailyNote:
+    async def upsert_daily_note(self, username: str, command: DailyNoteUpsert) -> DailyNote:
         normalized_username: str = username.strip()
         now: datetime = DateBounds.now()
-        with self._database.session() as session:
-            note: DailyNote | None = session.scalar(
+        async with self._database.session() as session:
+            note: DailyNote | None = await session.scalar(
                 select(DailyNote).where(
                     DailyNote.username == normalized_username,
                     DailyNote.note_date == command.note_date,
@@ -240,25 +224,55 @@ class TaskRepository:
             else:
                 note.content = command.content
                 note.updated_at = now
-            session.commit()
-        return self.get_daily_note(normalized_username, command.note_date)
+            await session.commit()
+        return await self.get_daily_note(normalized_username, command.note_date)
 
-    def list_daily_notes(self, username: str, start_date: date, end_date: date) -> list[DailyNote]:
+    async def list_daily_notes(self, username: str, start_date: date, end_date: date) -> list[DailyNote]:
         normalized_username: str = username.strip()
-        with self._database.session() as session:
-            return list(
-                session.scalars(
-                    select(DailyNote)
-                    .where(
-                        DailyNote.username == normalized_username,
-                        DailyNote.note_date >= start_date,
-                        DailyNote.note_date <= end_date,
-                    )
-                    .order_by(DailyNote.note_date)
+        async with self._database.session() as session:
+            result = await session.scalars(
+                select(DailyNote)
+                .where(
+                    DailyNote.username == normalized_username,
+                    DailyNote.note_date >= start_date,
+                    DailyNote.note_date <= end_date,
                 )
+                .order_by(DailyNote.note_date)
             )
+            return list(result)
 
-    def _resolve_user_id(self, session: Session, username: str) -> int | None:
+    async def _load_task_graph(self, session: AsyncSession, user_id: int | None) -> list[Task]:
+        result = await session.scalars(
+            select(Task)
+            .where(self._task_user_filter(user_id))
+            .options(self._task_scope(user_id))
+            .order_by(Task.start_at, Task.id)
+        )
+        tasks: list[Task] = list(result)
+        if not tasks:
+            return []
+
+        task_ids = [task.id for task in tasks]
+        entry_result = await session.scalars(
+            select(WorkEntry)
+            .where(WorkEntry.task_id.in_(task_ids))
+            .order_by(WorkEntry.entry_date, WorkEntry.id)
+        )
+        entries_by_task_id: dict[int, list[WorkEntry]] = {task_id: [] for task_id in task_ids}
+        for entry in entry_result:
+            entries_by_task_id.setdefault(entry.task_id, []).append(entry)
+
+        children_by_parent_id: dict[int, list[Task]] = {task_id: [] for task_id in task_ids}
+        for task in tasks:
+            if task.parent_id in children_by_parent_id:
+                children_by_parent_id[task.parent_id].append(task)
+
+        for task in tasks:
+            set_committed_value(task, "entries", entries_by_task_id.get(task.id, []))
+            set_committed_value(task, "children", children_by_parent_id.get(task.id, []))
+        return tasks
+
+    async def _resolve_user_id(self, session: AsyncSession, username: str) -> int | None:
         normalized_username: str = username.strip()
         if (
             settings.admin_username is not None
@@ -267,13 +281,13 @@ class TaskRepository:
         ):
             return None
 
-        user: User | None = session.scalar(select(User).where(User.username == normalized_username))
+        user: User | None = await session.scalar(select(User).where(User.username == normalized_username))
         if user is None:
             raise TaskNotFoundError(f"User {normalized_username} was not found.")
         return user.id
 
-    def _get_required_model(self, session: Session, user_id: int | None, task_id: int) -> Task:
-        task: Task | None = session.scalar(
+    async def _get_required_model(self, session: AsyncSession, user_id: int | None, task_id: int) -> Task:
+        task: Task | None = await session.scalar(
             select(Task)
             .where(Task.id == task_id, self._task_user_filter(user_id))
             .options(self._task_scope(user_id))
@@ -290,17 +304,22 @@ class TaskRepository:
             return with_loader_criteria(Task, lambda task: task.user_id.is_(None), include_aliases=True)
         return with_loader_criteria(Task, lambda task: task.user_id == user_id, include_aliases=True)
 
-    def _assert_parent_exists(self, session: Session, user_id: int | None, parent_id: int | None) -> None:
+    async def _assert_parent_exists(
+        self,
+        session: AsyncSession,
+        user_id: int | None,
+        parent_id: int | None,
+    ) -> None:
         if parent_id is None:
             return
-        self._assert_task_exists(session, user_id, parent_id)
+        await self._assert_task_exists(session, user_id, parent_id)
 
-    def _assert_task_exists(self, session: Session, user_id: int | None, task_id: int) -> None:
-        self._get_required_model(session, user_id, task_id)
+    async def _assert_task_exists(self, session: AsyncSession, user_id: int | None, task_id: int) -> None:
+        await self._get_required_model(session, user_id, task_id)
 
-    def _assert_not_descendant_parent(
+    async def _assert_not_descendant_parent(
         self,
-        session: Session,
+        session: AsyncSession,
         user_id: int | None,
         task_id: int,
         parent_id: int | None,
@@ -309,16 +328,15 @@ class TaskRepository:
         while current_id is not None:
             if current_id == task_id:
                 raise InvalidTaskHierarchyError("A task cannot be moved under one of its descendants.")
-            current: Task = self._get_required_model(session, user_id, current_id)
+            current: Task = await self._get_required_model(session, user_id, current_id)
             current_id = current.parent_id
 
-    def _root_id(self, session: Session, user_id: int | None, task: Task) -> int:
+    def _root_id_from_loaded_graph(self, tasks_by_id: dict[int, Task], task: Task) -> int:
         current: Task = task
-        while current.parent_id is not None:
-            current = self._get_required_model(session, user_id, current.parent_id)
+        visited_ids: set[int] = set()
+        while current.parent_id is not None and current.parent_id in tasks_by_id:
+            if current.id in visited_ids:
+                raise InvalidTaskHierarchyError("A task hierarchy cycle was detected.")
+            visited_ids.add(current.id)
+            current = tasks_by_id[current.parent_id]
         return current.id
-
-    def _load_graph(self, task: Task) -> None:
-        list(task.entries)
-        for child in list(task.children):
-            self._load_graph(child)
