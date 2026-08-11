@@ -1,4 +1,32 @@
-﻿/* HTML styles for the splash screen */
+﻿html,
+body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+}
+
+body,
+#out {
+    position: fixed;
+    inset: 0;
+}
+
+#out {
+    overflow: hidden;
+}
+
+/*
+ * Avalonia uses a transparent native input for browser IME composition.
+ * Keeping it viewport-relative prevents Chromium from horizontally scrolling
+ * the whole page when a long composition moves the input outside the canvas.
+ */
+.avalonia-input-element {
+    position: fixed !important;
+}
+
+/* HTML styles for the splash screen */
 .avalonia-splash {
     position: absolute;
     height: 100%;
