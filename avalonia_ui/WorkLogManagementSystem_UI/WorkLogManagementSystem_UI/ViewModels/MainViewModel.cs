@@ -28,6 +28,7 @@ public partial class MainViewModel : ViewModelBase
 
     private static readonly DateTime UnboundedStart = DateTime.MinValue;
     private static readonly DateTime UnboundedEnd = DateTime.MaxValue;
+    private readonly HashSet<int> _expandedTaskIds = new();
     private static readonly TimeSpan BackendTimezoneOffset = TimeSpan.FromHours(9);
     private static readonly CultureInfo KoreanCulture = CultureInfo.GetCultureInfo("ko-KR");
     private readonly ExportFileService _exportFileService = new();
@@ -398,8 +399,10 @@ public partial class MainViewModel : ViewModelBase
 
         try
         {
+            CaptureExpansionState(Tasks);
             using WorkLogApiClient client = CreateAuthenticatedClient();
             IReadOnlyList<TaskDto> loadedTasks = await client.GetTasksAsync(SelectedDate.Value, cancellationToken);
+            ApplyTaskDisplayState(loadedTasks, SelectedDate.Value);
             Tasks = new ObservableCollection<TaskDto>(SortTasks(loadedTasks));
             StatusMessage = $"{loadedTasks.Count}개 과업을 불러왔습니다.";
 
@@ -1680,7 +1683,8 @@ public partial class MainViewModel : ViewModelBase
     private static IReadOnlyList<TaskDto> SortTasks(IEnumerable<TaskDto> tasks)
     {
         return tasks
-            .OrderBy(task => task.DueAt)
+            .OrderBy(task => task.Priority <= 0 ? 1 : 0)
+            .ThenBy(task => task.DueAt)
             .ThenBy(task => task.Priority)
             .Select(task =>
             {
@@ -1688,6 +1692,36 @@ public partial class MainViewModel : ViewModelBase
                 return task;
             })
             .ToArray();
+    }
+
+    private void CaptureExpansionState(IEnumerable<TaskDto> tasks)
+    {
+        foreach (TaskDto task in tasks)
+        {
+            if (task.IsExpanded)
+            {
+                _expandedTaskIds.Add(task.Id);
+            }
+            else
+            {
+                _expandedTaskIds.Remove(task.Id);
+            }
+
+            CaptureExpansionState(task.Children);
+        }
+    }
+
+    private void ApplyTaskDisplayState(IEnumerable<TaskDto> tasks, DateTime selectedDate)
+    {
+        DateOnly entryDate = DateOnly.FromDateTime(selectedDate);
+        foreach (TaskDto task in tasks)
+        {
+            task.IsExpanded = _expandedTaskIds.Contains(task.Id);
+            WorkEntryDto? entry = task.Entries.FirstOrDefault(item => item.EntryDate == entryDate);
+            task.HasPerformedContentForSelectedDate = !string.IsNullOrWhiteSpace(entry?.PerformedContent);
+            task.HasRetrospectiveForSelectedDate = !string.IsNullOrWhiteSpace(entry?.Retrospective);
+            ApplyTaskDisplayState(task.Children, selectedDate);
+        }
     }
 
     private string ResolveParentTitle(int? parentId)

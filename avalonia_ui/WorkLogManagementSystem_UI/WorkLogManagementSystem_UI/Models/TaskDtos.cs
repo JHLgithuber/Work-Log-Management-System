@@ -48,6 +48,31 @@ public sealed class TaskDto
     [JsonIgnore]
     public string PrioritySummary => Priority <= 0 ? "우선순위 없음" : $"우선순위 {Priority}";
 
+    [JsonIgnore]
+    public bool IsExpanded { get; set; }
+
+    [JsonIgnore]
+    public bool HasPerformedContentForSelectedDate { get; set; }
+
+    [JsonIgnore]
+    public bool HasRetrospectiveForSelectedDate { get; set; }
+
+    [JsonIgnore]
+    public double PerformedContentIndicatorOpacity => HasPerformedContentForSelectedDate ? 1.0 : 0.22;
+
+    [JsonIgnore]
+    public double RetrospectiveIndicatorOpacity => HasRetrospectiveForSelectedDate ? 1.0 : 0.22;
+
+    [JsonIgnore]
+    public string PerformedContentIndicatorTooltip => HasPerformedContentForSelectedDate
+        ? "선택한 날짜의 수행내용이 작성되어 있습니다."
+        : "선택한 날짜의 수행내용이 없습니다.";
+
+    [JsonIgnore]
+    public string RetrospectiveIndicatorTooltip => HasRetrospectiveForSelectedDate
+        ? "선택한 날짜의 회고가 작성되어 있습니다."
+        : "선택한 날짜의 회고가 없습니다.";
+
     private static string FormatDate(DateTimeOffset value)
     {
         if (value.Year <= 1)

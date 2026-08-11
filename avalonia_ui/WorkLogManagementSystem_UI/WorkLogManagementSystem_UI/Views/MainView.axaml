@@ -365,10 +365,16 @@
             <TreeView Margin="0,18,0,0"
                       ItemsSource="{Binding Tasks}"
                       SelectedItem="{Binding SelectedTask, Mode=TwoWay}">
+              <TreeView.Styles>
+                <Style Selector="TreeViewItem">
+                  <Setter Property="IsExpanded"
+                          Value="{ReflectionBinding IsExpanded, Mode=TwoWay}"/>
+                </Style>
+              </TreeView.Styles>
               <TreeView.DataTemplates>
                 <TreeDataTemplate DataType="models:TaskDto"
                                   ItemsSource="{Binding Children}">
-                  <Grid ColumnDefinitions="*"
+                  <Grid ColumnDefinitions="*,Auto"
                         MinHeight="46"
                         Margin="0,4">
                     <StackPanel Grid.Column="0">
@@ -383,6 +389,24 @@
 	                                 FontSize="12"
 	                                 Foreground="{DynamicResource AppTextSecondaryBrush}"/>
 	                    </StackPanel>
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center"
+                                Spacing="7"
+                                Margin="8,0,2,0">
+                      <PathIcon Width="17"
+                                Height="17"
+                                Foreground="{DynamicResource AppAccentBrush}"
+                                Opacity="{Binding PerformedContentIndicatorOpacity}"
+                                ToolTip.Tip="{Binding PerformedContentIndicatorTooltip}"
+                                Data="M4 3H16V5H4V3ZM4 7H16V9H4V7ZM4 11H12V13H4V11ZM2 1V15H14L18 11V1H2ZM4 15H13V10H18V3H4V15Z"/>
+                      <PathIcon Width="17"
+                                Height="17"
+                                Foreground="{DynamicResource AppAccentBrush}"
+                                Opacity="{Binding RetrospectiveIndicatorOpacity}"
+                                ToolTip.Tip="{Binding RetrospectiveIndicatorTooltip}"
+                                Data="M10 2A8 8 0 1 0 18 10H16A6 6 0 1 1 10 4V7L14 3L10 -1V2ZM9 6H11V11H9V6ZM9 13H11V15H9V13Z"/>
+                    </StackPanel>
                   </Grid>
                 </TreeDataTemplate>
               </TreeView.DataTemplates>
