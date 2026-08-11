@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Header, HTTPException, Response, status
 
 from app.auth import AuthService, AuthenticatedUser, UserAlreadyExistsError
-from app.auth_schemas import ChangePasswordRequest, LoginRequest, RegisterRequest, TokenResponse, UserResponse
+from app.auth_schemas import ChangePasswordRequest, LoginRequest, RefreshTokenRequest, RegisterRequest, TokenResponse, UserResponse
 from app.database import Database
 from app.security import AuthenticationError, decode_access_token
 
@@ -41,6 +41,7 @@ class AuthRouter:
     def _register_routes(self) -> None:
         self.router.add_api_route("/register", self.register, methods=["POST"], response_model=UserResponse, status_code=201)
         self.router.add_api_route("/login", self.login, methods=["POST"], response_model=TokenResponse)
+        self.router.add_api_route("/refresh", self.refresh, methods=["POST"], response_model=TokenResponse)
         self.router.add_api_route("/me", self.me, methods=["GET"], response_model=UserResponse)
         self.router.add_api_route("/password", self.change_password, methods=["PUT"], status_code=204)
 
@@ -57,6 +58,12 @@ class AuthRouter:
     def login(self, request: LoginRequest) -> TokenResponse:
         try:
             return TokenResponse.from_domain(self._service.login(request.username, request.password))
+        except AuthenticationError as error:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(error)) from error
+
+    def refresh(self, request: RefreshTokenRequest) -> TokenResponse:
+        try:
+            return TokenResponse.from_domain(self._service.refresh(request.refresh_token))
         except AuthenticationError as error:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(error)) from error
 

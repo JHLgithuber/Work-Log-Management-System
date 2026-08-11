@@ -9,6 +9,7 @@
 - JWT 기반 인증
 - 업무 및 일별 기록 관리
 - Excel 내보내기
+- Avalonia WebAssembly UI: `GET /`
 - 상태 확인: `GET /health`
 - OpenAPI 문서: `/docs`
 
@@ -35,11 +36,13 @@ sudo usermod -aG docker "$USER"
 다음 블록을 터미널에 그대로 복사하여 실행합니다.
 
 ```bash
-cd ~/PycharmProjects/WorkLogMgmtSys/fastapi_backend
-sudo docker build -t worklog-fastapi:latest .
+cd ~/PycharmProjects/WorkLogMgmtSys
+sudo docker build -f fastapi_backend/Dockerfile -t worklog-fastapi:latest .
 sudo docker save worklog-fastapi:latest > "$HOME/worklog-fastapi.tar"
 ls -lh "$HOME/worklog-fastapi.tar"
 ```
+
+Docker 이미지 빌드 과정에서 Avalonia 브라우저 UI를 Release로 빌드하고 FastAPI 이미지에 함께 포함합니다. 때문에 Docker 빌드 컨텍스트는 `fastapi_backend` 폴더가 아닌 저장소 루트를 사용해야 합니다.
 
 Docker를 일반 사용자 권한으로 사용할 수 있는 환경에서는 두 명령의 `sudo`를 제거해도 됩니다.
 
@@ -57,11 +60,24 @@ Docker를 일반 사용자 권한으로 사용할 수 있는 환경에서는 두
 버전 태그를 사용하려면 아래처럼 이름을 일관되게 변경합니다.
 
 ```bash
-cd ~/PycharmProjects/WorkLogMgmtSys/fastapi_backend
-sudo docker build -t worklog-fastapi:1.0.0 .
+cd ~/PycharmProjects/WorkLogMgmtSys
+sudo docker build -f fastapi_backend/Dockerfile -t worklog-fastapi:1.0.0 .
 sudo docker save worklog-fastapi:1.0.0 > "$HOME/worklog-fastapi-1.0.0.tar"
 ls -lh "$HOME/worklog-fastapi-1.0.0.tar"
 ```
+
+## 로컬 통합 실행
+
+Docker 없이 실행할 때는 먼저 Avalonia 브라우저 산출물을 FastAPI의 `web` 폴더로 배치합니다.
+
+```bash
+cd ~/PycharmProjects/WorkLogMgmtSys
+sh fastapi_backend/build-web.sh
+cd fastapi_backend
+uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+브라우저에서 `http://localhost:8000/`을 열면 Avalonia UI가 나타납니다. 브라우저 앱은 현재 접속한 origin을 API 기본 주소로 사용하므로, NAS나 다른 PC에서 접속해도 별도의 `localhost` 설정이 필요하지 않습니다.
 
 Dockerfile에 표시되는 `SecretsUsedInArgOrEnv` 경고는 `CREDENTIALS`, `TOKEN`이라는 변수명에 대한 정적 검사 결과입니다. 현재 경고 대상인 CORS 허용 여부와 토큰 만료 시간은 비밀값이 아닙니다. 실제 비밀값인 관리자 암호와 JWT 서명 키는 이미지에 넣지 말고 실행 시 전달해야 합니다.
 
@@ -99,6 +115,7 @@ openssl rand -hex 32
 | `WORKLOG_ADMIN_PASSWORD` | 관리자 이름을 지정하면 함께 지정 필요 |
 | `WORKLOG_JWT_SECRET_KEY` | 운영 환경에서 고정된 안전한 값 권장 |
 | `WORKLOG_JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `1440` |
+| `WORKLOG_JWT_REFRESH_TOKEN_EXPIRE_DAYS` | `90` (사용할 때마다 만료 기간 갱신) |
 | `WORKLOG_DATABASE_URL` | 컨테이너 기본값은 `sqlite:////app/data/worklog.sqlite3` |
 
 `.env` 파일은 이미지에 포함되지 않으며 저장소에도 커밋하지 않아야 합니다.
@@ -172,8 +189,8 @@ WORKLOG_DATABASE_URL=mariadb+mariadbconnector://사용자:암호@DB호스트:330
 새 버전은 `latest`보다 명시적인 버전 태그로 관리하는 것이 안전합니다. 빌드 장비에서 다음 명령을 실행합니다.
 
 ```bash
-cd ~/PycharmProjects/WorkLogMgmtSys/fastapi_backend
-sudo docker build -t worklog-fastapi:1.0.1 .
+cd ~/PycharmProjects/WorkLogMgmtSys
+sudo docker build -f fastapi_backend/Dockerfile -t worklog-fastapi:1.0.1 .
 sudo docker save worklog-fastapi:1.0.1 > "$HOME/worklog-fastapi-1.0.1.tar"
 ```
 

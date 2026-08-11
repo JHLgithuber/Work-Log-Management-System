@@ -51,7 +51,11 @@ class Base(DeclarativeBase):
 
 class DateBounds:
     TIMEZONE: Final[timezone] = timezone(timedelta(hours=9), "KST")
-    MINIMUM: Final[datetime] = datetime.min.replace(tzinfo=TIMEZONE)
+    # A local midnight at datetime.min would fall in year 0 when converted to
+    # UTC.  That value cannot be represented by .NET DateTimeOffset, which is
+    # used by the UI.  09:00 KST is the earliest local value whose UTC instant
+    # is still datetime.min.
+    MINIMUM: Final[datetime] = datetime(1, 1, 1, 9, tzinfo=TIMEZONE)
     MAXIMUM: Final[datetime] = datetime.max.replace(tzinfo=TIMEZONE)
 
     @classmethod
@@ -181,6 +185,20 @@ class User(Base):
         cascade="all, delete-orphan",
         order_by=lambda: (Task.start_at, Task.id),
     )
+
+
+class RefreshSession(Base):
+    __tablename__ = "refresh_sessions"
+    __table_args__ = (
+        Index("idx_refresh_sessions_username", "username"),
+        Index("idx_refresh_sessions_expires_at", "expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(100), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(KoreaDateTime(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(KoreaDateTime(), nullable=False)
 
 
 @dataclass(frozen=True)

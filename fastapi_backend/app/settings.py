@@ -23,6 +23,7 @@ class AppSettings:
     admin_password: str | None
     jwt_secret_key: str
     jwt_access_token_expire_minutes: int
+    jwt_refresh_token_expire_days: int
 
     @classmethod
     def load(cls) -> "AppSettings":
@@ -36,6 +37,7 @@ class AppSettings:
             admin_password=_optional_string_env("WORKLOG_ADMIN_PASSWORD"),
             jwt_secret_key=_string_env("WORKLOG_JWT_SECRET_KEY", secrets.token_urlsafe(32)),
             jwt_access_token_expire_minutes=_int_env("WORKLOG_JWT_ACCESS_TOKEN_EXPIRE_MINUTES", 1440),
+            jwt_refresh_token_expire_days=_int_env("WORKLOG_JWT_REFRESH_TOKEN_EXPIRE_DAYS", 90),
         )
 
 

@@ -568,7 +568,7 @@
                         MaxHeight="520"
                         VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="16">
-              <StackPanel>
+              <StackPanel IsVisible="{Binding CanConfigureApiBaseUrl}">
                 <TextBlock Classes="label"
                            Text="API 주소"/>
                 <controls:ImeSafeTextBox Text="{Binding SettingsApiBaseUrl, Mode=TwoWay}"
@@ -915,12 +915,12 @@
 	                       FontSize="24"
 	                       FontWeight="SemiBold"
 	                       Foreground="{DynamicResource AppTextPrimaryBrush}"/>
-	            <TextBlock Text="업무일지 백엔드 주소와 계정을 입력하세요."
+	            <TextBlock Text="{Binding ConnectionGateDescription}"
 	                       Foreground="{DynamicResource AppTextSecondaryBrush}"
 	                       TextWrapping="Wrap"/>
 	          </StackPanel>
 
-          <StackPanel>
+          <StackPanel IsVisible="{Binding CanConfigureApiBaseUrl}">
             <TextBlock Classes="label"
                        Text="API 주소"/>
 	            <controls:ImeSafeTextBox Text="{Binding ConnectionGateApiBaseUrl, Mode=TwoWay}"
@@ -930,29 +930,46 @@
 	          <StackPanel>
 	            <TextBlock Classes="label"
 	                       Text="아이디"/>
-	            <controls:ImeSafeTextBox Text="{Binding LoginUsername, Mode=TwoWay}"/>
+	            <controls:ImeSafeTextBox x:Name="LoginUsernameTextBox"
+                                     Text="{Binding LoginUsername, Mode=TwoWay}"
+                                     KeyDown="OnLoginUsernameKeyDown"/>
 	          </StackPanel>
 
 	          <StackPanel>
 	            <TextBlock Classes="label"
 	                       Text="비밀번호"/>
-	            <controls:ImeSafeTextBox Text="{Binding LoginPassword, Mode=TwoWay}"
-	                     PasswordChar="*"/>
+	            <controls:ImeSafeTextBox x:Name="LoginPasswordTextBox"
+                                     Text="{Binding LoginPassword, Mode=TwoWay}"
+	                               PasswordChar="*"
+                                     KeyDown="OnLoginPasswordKeyDown"/>
 	          </StackPanel>
 
-          <CheckBox Content="계정정보 저장"
-                    IsChecked="{Binding RememberCredentials, Mode=TwoWay}"
-                    IsEnabled="{Binding IsCredentialSaveSupported}"/>
-          <TextBlock Text="{Binding CredentialSaveUnsupportedReason}"
-                     Foreground="{DynamicResource AppTextMutedBrush}"
-                     FontSize="12"
-                     TextWrapping="Wrap"
-                     IsVisible="{Binding IsCredentialSaveUnsupported}"/>
+          <StackPanel Spacing="4"
+                      IsVisible="{Binding IsCredentialSaveUiVisible}">
+            <CheckBox Content="계정정보 저장"
+                      IsChecked="{Binding RememberCredentials, Mode=TwoWay}"
+                      IsEnabled="{Binding IsCredentialSaveSupported}"/>
+            <TextBlock Text="{Binding CredentialSaveUnsupportedReason}"
+                       Foreground="{DynamicResource AppTextMutedBrush}"
+                       FontSize="12"
+                       TextWrapping="Wrap"
+                       IsVisible="{Binding IsCredentialSaveUnsupported}"/>
+          </StackPanel>
 
-          <TextBlock Text="{Binding ConnectionGateErrorMessage}"
-                     Foreground="{DynamicResource AppErrorBrush}"
+          <Border Background="#22C62828"
+                  CornerRadius="6"
+                  Padding="10"
+                  IsVisible="{Binding HasConnectionGateErrorMessage}">
+            <TextBlock Text="{Binding ConnectionGateErrorMessage}"
+                       Foreground="{DynamicResource AppErrorBrush}"
+                       TextWrapping="Wrap"/>
+          </Border>
+
+          <TextBlock Text="{Binding ConnectionGateStatusMessage}"
+                     Foreground="{DynamicResource AppAccentBrush}"
+                     FontWeight="SemiBold"
                      TextWrapping="Wrap"
-                     IsVisible="{Binding HasConnectionGateErrorMessage}"/>
+                     IsVisible="{Binding HasConnectionGateStatusMessage}"/>
 
           <TextBlock Text="연결 확인 중..."
                      Foreground="{DynamicResource AppTextSecondaryBrush}"

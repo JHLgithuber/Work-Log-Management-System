@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,12 +12,19 @@ namespace WorkLogManagementSystem_UI.Services;
 
 public sealed class WorkLogApiClient : IDisposable
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly HttpClient _httpClient;
 
-    public WorkLogApiClient(string baseUrl, string? accessToken = null)
+    public WorkLogApiClient(
+        string baseUrl,
+        string? accessToken = null,
+        Func<(string AccessToken, string RefreshToken)>? tokenProvider = null,
+        Func<TokenResponse, Task>? tokenUpdated = null)
     {
-        _httpClient = new HttpClient { BaseAddress = new Uri(NormalizeBaseUrl(baseUrl)) };
+        Uri baseAddress = new(NormalizeBaseUrl(baseUrl));
+        _httpClient = tokenProvider is not null && tokenUpdated is not null
+            ? new HttpClient(new RefreshingAuthHandler(baseAddress, tokenProvider, tokenUpdated))
+            : new HttpClient();
+        _httpClient.BaseAddress = baseAddress;
         if (!string.IsNullOrWhiteSpace(accessToken))
         {
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Trim());
@@ -40,51 +46,92 @@ public sealed class WorkLogApiClient : IDisposable
 
     public async Task<TokenResponse> LoginAsync(LoginRequest request, CancellationToken cancellationToken)
     {
-        using HttpResponseMessage response = await _httpClient.PostAsJsonAsync("/auth/login", request, JsonOptions, cancellationToken);
+        using HttpResponseMessage response = await _httpClient.PostAsJsonAsync(
+            "/auth/login",
+            request,
+            AppJsonSerializerContext.TypeInfo<LoginRequest>(),
+            cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
-        TokenResponse? token = await response.Content.ReadFromJsonAsync<TokenResponse>(JsonOptions, cancellationToken);
+        TokenResponse? token = await response.Content.ReadFromJsonAsync(
+            AppJsonSerializerContext.TypeInfo<TokenResponse>(),
+            cancellationToken);
         return token ?? throw new InvalidOperationException("The backend returned an empty login response.");
+    }
+
+    public async Task<TokenResponse> RefreshAsync(string refreshToken, CancellationToken cancellationToken)
+    {
+        using HttpResponseMessage response = await _httpClient.PostAsJsonAsync(
+            "/auth/refresh",
+            new RefreshTokenRequest { RefreshToken = refreshToken },
+            AppJsonSerializerContext.TypeInfo<RefreshTokenRequest>(),
+            cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        TokenResponse? token = await response.Content.ReadFromJsonAsync(
+            AppJsonSerializerContext.TypeInfo<TokenResponse>(),
+            cancellationToken);
+        return token ?? throw new InvalidOperationException("The backend returned an empty refresh response.");
     }
 
     public async Task<UserDto> GetCurrentUserAsync(CancellationToken cancellationToken)
     {
-        UserDto? user = await _httpClient.GetFromJsonAsync<UserDto>("/auth/me", JsonOptions, cancellationToken);
+        UserDto? user = await _httpClient.GetFromJsonAsync(
+            "/auth/me",
+            AppJsonSerializerContext.TypeInfo<UserDto>(),
+            cancellationToken);
         return user ?? throw new InvalidOperationException("The backend returned an empty user response.");
     }
 
     public async Task<UserDto> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken)
     {
-        using HttpResponseMessage response = await _httpClient.PostAsJsonAsync("/auth/register", request, JsonOptions, cancellationToken);
+        using HttpResponseMessage response = await _httpClient.PostAsJsonAsync(
+            "/auth/register",
+            request,
+            AppJsonSerializerContext.TypeInfo<RegisterRequest>(),
+            cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
-        UserDto? user = await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions, cancellationToken);
+        UserDto? user = await response.Content.ReadFromJsonAsync(
+            AppJsonSerializerContext.TypeInfo<UserDto>(),
+            cancellationToken);
         return user ?? throw new InvalidOperationException("The backend returned an empty user response.");
     }
 
     public async Task ChangePasswordAsync(ChangePasswordRequest request, CancellationToken cancellationToken)
     {
-        using HttpResponseMessage response = await _httpClient.PutAsJsonAsync("/auth/password", request, JsonOptions, cancellationToken);
+        using HttpResponseMessage response = await _httpClient.PutAsJsonAsync(
+            "/auth/password",
+            request,
+            AppJsonSerializerContext.TypeInfo<ChangePasswordRequest>(),
+            cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
     }
 
     public async Task<IReadOnlyList<TaskDto>> GetTasksAsync(DateTime targetDate, CancellationToken cancellationToken)
     {
         string dateValue = Uri.EscapeDataString(targetDate.ToString("yyyy-MM-dd"));
-        IReadOnlyList<TaskDto>? tasks = await _httpClient.GetFromJsonAsync<IReadOnlyList<TaskDto>>(
+        List<TaskDto>? tasks = await _httpClient.GetFromJsonAsync(
             $"/tasks?target_date={dateValue}",
-            JsonOptions,
+            AppJsonSerializerContext.TypeInfo<List<TaskDto>>(),
             cancellationToken);
-        return tasks ?? Array.Empty<TaskDto>();
+        return tasks ?? new List<TaskDto>();
     }
 
     public async Task<TaskDto> CreateTaskAsync(TaskWriteRequest request, CancellationToken cancellationToken)
     {
-        using HttpResponseMessage response = await _httpClient.PostAsJsonAsync("/tasks", request, JsonOptions, cancellationToken);
+        using HttpResponseMessage response = await _httpClient.PostAsJsonAsync(
+            "/tasks",
+            request,
+            AppJsonSerializerContext.TypeInfo<TaskWriteRequest>(),
+            cancellationToken);
         return await ReadTaskResponseAsync(response, cancellationToken);
     }
 
     public async Task<TaskDto> UpdateTaskAsync(int taskId, TaskWriteRequest request, CancellationToken cancellationToken)
     {
-        using HttpResponseMessage response = await _httpClient.PutAsJsonAsync($"/tasks/{taskId}", request, JsonOptions, cancellationToken);
+        using HttpResponseMessage response = await _httpClient.PutAsJsonAsync(
+            $"/tasks/{taskId}",
+            request,
+            AppJsonSerializerContext.TypeInfo<TaskWriteRequest>(),
+            cancellationToken);
         return await ReadTaskResponseAsync(response, cancellationToken);
     }
 
@@ -100,9 +147,9 @@ public sealed class WorkLogApiClient : IDisposable
         CancellationToken cancellationToken)
     {
         string dateValue = Uri.EscapeDataString(entryDate.ToString("yyyy-MM-dd"));
-        WorkEntryDto? entry = await _httpClient.GetFromJsonAsync<WorkEntryDto>(
+        WorkEntryDto? entry = await _httpClient.GetFromJsonAsync(
             $"/tasks/{taskId}/entries/{dateValue}",
-            JsonOptions,
+            AppJsonSerializerContext.TypeInfo<WorkEntryDto>(),
             cancellationToken);
         return entry ?? throw new InvalidOperationException("The backend returned an empty work entry response.");
     }
@@ -117,19 +164,21 @@ public sealed class WorkLogApiClient : IDisposable
         using HttpResponseMessage response = await _httpClient.PutAsJsonAsync(
             $"/tasks/{taskId}/entries/{dateValue}",
             request,
-            JsonOptions,
+            AppJsonSerializerContext.TypeInfo<WorkEntryWriteRequest>(),
             cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
-        WorkEntryDto? entry = await response.Content.ReadFromJsonAsync<WorkEntryDto>(JsonOptions, cancellationToken);
+        WorkEntryDto? entry = await response.Content.ReadFromJsonAsync(
+            AppJsonSerializerContext.TypeInfo<WorkEntryDto>(),
+            cancellationToken);
         return entry ?? throw new InvalidOperationException("The backend returned an empty work entry response.");
     }
 
     public async Task<DailyNoteDto> GetDailyNoteAsync(DateTime noteDate, CancellationToken cancellationToken)
     {
         string dateValue = Uri.EscapeDataString(noteDate.ToString("yyyy-MM-dd"));
-        DailyNoteDto? note = await _httpClient.GetFromJsonAsync<DailyNoteDto>(
+        DailyNoteDto? note = await _httpClient.GetFromJsonAsync(
             $"/tasks/daily-notes/{dateValue}",
-            JsonOptions,
+            AppJsonSerializerContext.TypeInfo<DailyNoteDto>(),
             cancellationToken);
         return note ?? throw new InvalidOperationException("The backend returned an empty daily note response.");
     }
@@ -143,10 +192,12 @@ public sealed class WorkLogApiClient : IDisposable
         using HttpResponseMessage response = await _httpClient.PutAsJsonAsync(
             $"/tasks/daily-notes/{dateValue}",
             request,
-            JsonOptions,
+            AppJsonSerializerContext.TypeInfo<DailyNoteWriteRequest>(),
             cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
-        DailyNoteDto? note = await response.Content.ReadFromJsonAsync<DailyNoteDto>(JsonOptions, cancellationToken);
+        DailyNoteDto? note = await response.Content.ReadFromJsonAsync(
+            AppJsonSerializerContext.TypeInfo<DailyNoteDto>(),
+            cancellationToken);
         return note ?? throw new InvalidOperationException("The backend returned an empty daily note response.");
     }
 
@@ -182,7 +233,9 @@ public sealed class WorkLogApiClient : IDisposable
     private static async Task<TaskDto> ReadTaskResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         await EnsureSuccessAsync(response, cancellationToken);
-        TaskDto? task = await response.Content.ReadFromJsonAsync<TaskDto>(JsonOptions, cancellationToken);
+        TaskDto? task = await response.Content.ReadFromJsonAsync(
+            AppJsonSerializerContext.TypeInfo<TaskDto>(),
+            cancellationToken);
         return task ?? throw new InvalidOperationException("The backend returned an empty task response.");
     }
 

@@ -8,3 +8,6 @@ __pycache__/
 
 *.sqlite3
 *.tar
+
+# Generated Avalonia browser publish output
+web/

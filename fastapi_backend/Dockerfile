@@ -1,3 +1,29 @@
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS web-builder
+
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_NOLOGO=1
+
+WORKDIR /src
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 python-is-python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY avalonia_ui/WorkLogManagementSystem_UI/Directory.Packages.props ./
+COPY avalonia_ui/WorkLogManagementSystem_UI/WorkLogManagementSystem_UI/WorkLogManagementSystem_UI.csproj WorkLogManagementSystem_UI/
+COPY avalonia_ui/WorkLogManagementSystem_UI/WorkLogManagementSystem_UI.Browser/WorkLogManagementSystem_UI.Browser.csproj WorkLogManagementSystem_UI.Browser/
+
+RUN dotnet workload install wasm-tools --skip-manifest-update \
+    && dotnet restore WorkLogManagementSystem_UI.Browser/WorkLogManagementSystem_UI.Browser.csproj
+
+COPY avalonia_ui/WorkLogManagementSystem_UI/. ./
+
+RUN dotnet publish WorkLogManagementSystem_UI.Browser/WorkLogManagementSystem_UI.Browser.csproj \
+    -c Release \
+    --no-restore \
+    -o /web-publish
+
+
 FROM python:3.12-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -15,7 +41,7 @@ RUN apt-get update \
     && pip install --no-cache-dir uv \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml uv.lock ./
+COPY fastapi_backend/pyproject.toml fastapi_backend/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 
@@ -29,6 +55,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     WORKLOG_CORS_ORIGINS="*" \
     WORKLOG_CORS_ALLOW_CREDENTIALS="true" \
     WORKLOG_JWT_ACCESS_TOKEN_EXPIRE_MINUTES="1440" \
+    WORKLOG_JWT_REFRESH_TOKEN_EXPIRE_DAYS="90" \
     WORKLOG_DATABASE_URL="sqlite:////app/data/worklog.sqlite3"
 
 # Provide WORKLOG_ADMIN_USERNAME, WORKLOG_ADMIN_PASSWORD, and
@@ -46,9 +73,10 @@ RUN apt-get update \
     && chown -R app:app /app
 
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
-COPY --chown=app:app docker-entrypoint.sh ./
-COPY --chown=app:app main.py ./
-COPY --chown=app:app app ./app
+COPY --chown=app:app fastapi_backend/docker-entrypoint.sh ./
+COPY --chown=app:app fastapi_backend/main.py ./
+COPY --chown=app:app fastapi_backend/app ./app
+COPY --from=web-builder --chown=app:app /web-publish/wwwroot ./web
 RUN chmod +x /app/docker-entrypoint.sh
 
 USER app

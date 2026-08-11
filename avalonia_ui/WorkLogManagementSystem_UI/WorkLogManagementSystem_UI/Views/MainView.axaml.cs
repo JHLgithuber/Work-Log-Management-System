@@ -266,6 +266,31 @@ public partial class MainView : UserControl
         }
     }
 
+    private void OnLoginUsernameKeyDown(object? sender, KeyEventArgs eventArgs)
+    {
+        if (eventArgs.Key != Key.Enter)
+        {
+            return;
+        }
+
+        eventArgs.Handled = true;
+        LoginPasswordTextBox.Focus(NavigationMethod.Tab);
+    }
+
+    private void OnLoginPasswordKeyDown(object? sender, KeyEventArgs eventArgs)
+    {
+        if (eventArgs.Key != Key.Enter || DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+
+        eventArgs.Handled = true;
+        if (viewModel.LoginCommand.CanExecute(null))
+        {
+            viewModel.LoginCommand.Execute(null);
+        }
+    }
+
     private async Task CommitFocusedCompositionAsync()
     {
         TopLevel? topLevel = TopLevel.GetTopLevel(this);

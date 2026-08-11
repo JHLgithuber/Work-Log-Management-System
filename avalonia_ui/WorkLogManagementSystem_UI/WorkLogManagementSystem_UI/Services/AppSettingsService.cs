@@ -16,7 +16,6 @@ public sealed class AppSettingsService
 {
     private const string SettingsDirectoryName = "WorkLogManagementSystem_UI";
     private const string SettingsFileName = "settings.json";
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private static string _currentThemeMode = AppThemeMode.System;
     public static event EventHandler? ThemeResourcesChanged;
 
@@ -152,7 +151,9 @@ public sealed class AppSettingsService
             }
 
             string json = File.ReadAllText(path);
-            AppSettingsResult? settings = JsonSerializer.Deserialize<AppSettingsResult>(json, JsonOptions);
+            AppSettingsResult? settings = JsonSerializer.Deserialize(
+                json,
+                AppJsonSerializerContext.TypeInfo<AppSettingsResult>());
             if (settings is null ||
                 string.IsNullOrWhiteSpace(settings.ApiBaseUrl) ||
                 !IsValidThemeMode(settings.ThemeMode))
@@ -177,7 +178,9 @@ public sealed class AppSettingsService
             Directory.CreateDirectory(directory);
         }
 
-        string json = JsonSerializer.Serialize(settings, JsonOptions);
+        string json = JsonSerializer.Serialize(
+            settings,
+            AppJsonSerializerContext.TypeInfo<AppSettingsResult>());
         await File.WriteAllTextAsync(path, json, cancellationToken);
     }
 

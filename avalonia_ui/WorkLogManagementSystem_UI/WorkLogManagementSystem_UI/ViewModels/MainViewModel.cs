@@ -48,6 +48,7 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty] private string _apiBaseUrl = AppDefaultsService.Load().ApiBaseUrl;
     [ObservableProperty] private string _accessToken = string.Empty;
+    [ObservableProperty] private string _refreshToken = string.Empty;
     [ObservableProperty] private string _currentUsername = string.Empty;
     [ObservableProperty] private string _currentDisplayName = string.Empty;
     [ObservableProperty] private string _loginUsername = string.Empty;
@@ -99,6 +100,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private bool _isConnectionBusy;
     [ObservableProperty] private string _connectionGateApiBaseUrl = string.Empty;
     [ObservableProperty] private string _connectionGateErrorMessage = string.Empty;
+    [ObservableProperty] private string _connectionGateStatusMessage = string.Empty;
     [ObservableProperty] private bool _isExportRangeDialogOpen;
     [ObservableProperty] private DateTime? _exportStartDate = DateTime.Today;
     [ObservableProperty] private DateTime? _exportEndDate = DateTime.Today;
@@ -159,9 +161,15 @@ public partial class MainViewModel : ViewModelBase
     public bool IsConnectionGateVisible => !IsBackendConnected || !IsAuthenticated;
     public bool IsLoggedInStatusVisible => IsBackendConnected && IsAuthenticated;
     public bool HasConnectionGateErrorMessage => !string.IsNullOrWhiteSpace(ConnectionGateErrorMessage);
+    public bool HasConnectionGateStatusMessage => !string.IsNullOrWhiteSpace(ConnectionGateStatusMessage);
+    public bool IsCredentialSaveUiVisible => !OperatingSystem.IsBrowser();
     public bool IsConnectionErrorTextVisible => IsConnectionErrorDialogOpen && !IsConnectionErrorHtml;
     public bool IsConnectionErrorHtmlVisible => IsConnectionErrorDialogOpen && IsConnectionErrorHtml;
     public bool HasExportRangeErrorMessage => !string.IsNullOrWhiteSpace(ExportRangeErrorMessage);
+    public bool CanConfigureApiBaseUrl => !OperatingSystem.IsBrowser();
+    public string ConnectionGateDescription => CanConfigureApiBaseUrl
+        ? "업무일지 백엔드 주소와 계정을 입력하세요."
+        : "업무일지 계정을 입력하세요.";
     public bool CanEditExistingTask => IsEditorEnabled && !IsNewTask && SelectedTask is not null;
     public bool CanCreateChildTask =>
         IsEditorEnabled &&
@@ -328,6 +336,11 @@ public partial class MainViewModel : ViewModelBase
     partial void OnConnectionGateErrorMessageChanged(string value)
     {
         OnPropertyChanged(nameof(HasConnectionGateErrorMessage));
+    }
+
+    partial void OnConnectionGateStatusMessageChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasConnectionGateStatusMessage));
     }
 
     partial void OnIsConnectionErrorDialogOpenChanged(bool value)
@@ -844,12 +857,14 @@ public partial class MainViewModel : ViewModelBase
         if (!ValidateApiBaseUrl(apiBaseUrl, out string? validationError))
         {
             ConnectionGateErrorMessage = validationError ?? "API 주소를 확인하세요.";
+            ConnectionGateStatusMessage = string.Empty;
             return;
         }
 
         if (string.IsNullOrWhiteSpace(LoginUsername) || string.IsNullOrWhiteSpace(LoginPassword))
         {
             ConnectionGateErrorMessage = "아이디와 비밀번호를 입력하세요.";
+            ConnectionGateStatusMessage = string.Empty;
             return;
         }
 
@@ -857,6 +872,7 @@ public partial class MainViewModel : ViewModelBase
         {
             IsConnectionBusy = true;
             ConnectionGateErrorMessage = string.Empty;
+            ConnectionGateStatusMessage = string.Empty;
             using WorkLogApiClient client = new(apiBaseUrl);
             await client.CheckConnectionAsync(CancellationToken.None);
             TokenResponse token = await client.LoginAsync(
@@ -870,6 +886,7 @@ public partial class MainViewModel : ViewModelBase
             ApiBaseUrl = apiBaseUrl;
             ConnectionGateApiBaseUrl = apiBaseUrl;
             AccessToken = token.AccessToken;
+            RefreshToken = token.RefreshToken;
             using WorkLogApiClient authenticatedClient = new(apiBaseUrl, AccessToken);
             UserDto currentUser = await authenticatedClient.GetCurrentUserAsync(CancellationToken.None);
             CurrentUsername = currentUser.Username;
@@ -888,6 +905,7 @@ public partial class MainViewModel : ViewModelBase
             IsAuthenticated = false;
             ShowConnectionErrorDialogIfHtml(error, "로그인 실패");
             ConnectionGateErrorMessage = CreateConnectionGateErrorMessage(error, "로그인 실패");
+            ConnectionGateStatusMessage = string.Empty;
             StatusMessage = "로그인 실패.";
         }
         finally
@@ -911,6 +929,7 @@ public partial class MainViewModel : ViewModelBase
     private async Task CompleteLogoutAsync()
     {
         AccessToken = string.Empty;
+        RefreshToken = string.Empty;
         CurrentUsername = string.Empty;
         CurrentDisplayName = string.Empty;
         _lastSavedAt = null;
@@ -1063,6 +1082,7 @@ public partial class MainViewModel : ViewModelBase
         if (!ValidateApiBaseUrl(apiBaseUrl, out string? validationError))
         {
             ConnectionGateErrorMessage = validationError ?? "API 주소를 확인하세요.";
+            ConnectionGateStatusMessage = string.Empty;
             IsBackendConnected = false;
             return;
         }
@@ -1071,6 +1091,7 @@ public partial class MainViewModel : ViewModelBase
         {
             IsConnectionBusy = true;
             ConnectionGateErrorMessage = string.Empty;
+            ConnectionGateStatusMessage = string.Empty;
             using WorkLogApiClient client = new(apiBaseUrl);
             await client.CheckConnectionAsync(CancellationToken.None);
 
@@ -1078,12 +1099,13 @@ public partial class MainViewModel : ViewModelBase
             ConnectionGateApiBaseUrl = apiBaseUrl;
             IsBackendConnected = true;
             StatusMessage = "백엔드 연결됨.";
+            ConnectionGateStatusMessage = "서버 연결이 정상입니다.";
 
-            if (!string.IsNullOrWhiteSpace(AccessToken))
+            if (!string.IsNullOrWhiteSpace(AccessToken) || !string.IsNullOrWhiteSpace(RefreshToken))
             {
                 try
                 {
-                    using WorkLogApiClient authenticatedClient = new(apiBaseUrl, AccessToken);
+                    using WorkLogApiClient authenticatedClient = CreateAuthenticatedClient(apiBaseUrl);
                     UserDto currentUser = await authenticatedClient.GetCurrentUserAsync(CancellationToken.None);
                     CurrentUsername = currentUser.Username;
                     CurrentDisplayName = currentUser.DisplayName;
@@ -1093,6 +1115,7 @@ public partial class MainViewModel : ViewModelBase
                 catch
                 {
                     AccessToken = string.Empty;
+                    RefreshToken = string.Empty;
                     CurrentUsername = string.Empty;
                     CurrentDisplayName = string.Empty;
                     IsAuthenticated = false;
@@ -1120,6 +1143,7 @@ public partial class MainViewModel : ViewModelBase
             IsBackendConnected = false;
             ShowConnectionErrorDialogIfHtml(error, "연결 확인 실패");
             ConnectionGateErrorMessage = CreateConnectionGateErrorMessage(error, "연결 확인 실패");
+            ConnectionGateStatusMessage = string.Empty;
             StatusMessage = "백엔드 연결 실패.";
         }
         finally
@@ -1263,9 +1287,14 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        ApiBaseUrl = settings.ApiBaseUrl;
-        ConnectionGateApiBaseUrl = settings.ApiBaseUrl;
+        if (CanConfigureApiBaseUrl)
+        {
+            ApiBaseUrl = settings.ApiBaseUrl;
+            ConnectionGateApiBaseUrl = settings.ApiBaseUrl;
+        }
+
         AccessToken = settings.AccessToken;
+        RefreshToken = settings.RefreshToken;
         LoginUsername = settings.Username;
         CurrentUsername = settings.Username;
         ThemeMode = settings.ThemeMode;
@@ -1362,9 +1391,20 @@ public partial class MainViewModel : ViewModelBase
         };
     }
 
-    private WorkLogApiClient CreateAuthenticatedClient()
+    private WorkLogApiClient CreateAuthenticatedClient(string? apiBaseUrl = null)
     {
-        return new WorkLogApiClient(ApiBaseUrl, AccessToken);
+        return new WorkLogApiClient(
+            apiBaseUrl ?? ApiBaseUrl,
+            AccessToken,
+            () => (AccessToken, RefreshToken),
+            UpdateTokensAsync);
+    }
+
+    private async Task UpdateTokensAsync(TokenResponse tokens)
+    {
+        AccessToken = tokens.AccessToken;
+        RefreshToken = tokens.RefreshToken;
+        await _settingsService.SaveSettingsAsync(CreateSettingsResult(), CancellationToken.None);
     }
 
     private void MarkEditorDirty()
@@ -1490,7 +1530,7 @@ public partial class MainViewModel : ViewModelBase
 
     private AppSettingsResult CreateSettingsResult()
     {
-        return new AppSettingsResult(ApiBaseUrl, ThemeMode, AccessToken, CurrentUsername);
+        return new AppSettingsResult(ApiBaseUrl, ThemeMode, AccessToken, RefreshToken, CurrentUsername);
     }
 
     private void ShowConnectionErrorDialog(Exception error, string title)

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
+import hashlib
+import secrets
 
 from sqlalchemy import select
 
 from app.database import Database
-from app.domain import DateBounds, User
+from app.domain import DateBounds, RefreshSession, User
 from app.security import AuthenticationError, create_access_token, hash_password, verify_password
 from app.settings import settings
 
@@ -26,6 +28,7 @@ class AuthenticatedUser:
 @dataclass(frozen=True)
 class TokenPair:
     access_token: str
+    refresh_token: str
     token_type: str
 
 
@@ -57,7 +60,27 @@ class AuthService:
 
     def login(self, username: str, password: str) -> TokenPair:
         user = self.authenticate(username, password)
-        return TokenPair(access_token=create_access_token(user.username, user.id), token_type="bearer")
+        return self._create_token_pair(user)
+
+    def refresh(self, refresh_token: str) -> TokenPair:
+        token_hash = self._refresh_token_hash(refresh_token)
+        now = DateBounds.now()
+        with self._database.session() as session:
+            refresh_session = session.scalar(
+                select(RefreshSession).where(RefreshSession.token_hash == token_hash)
+            )
+            if refresh_session is None or refresh_session.expires_at < now:
+                if refresh_session is not None:
+                    session.delete(refresh_session)
+                    session.commit()
+                raise AuthenticationError("Refresh token is invalid or has expired.")
+
+            username = refresh_session.username
+            session.delete(refresh_session)
+            session.commit()
+
+        user = self.get_user(username)
+        return self._create_token_pair(user)
 
     def change_password(self, username: str, current_password: str, new_password: str) -> None:
         normalized_username = self._normalize_username(username)
@@ -75,7 +98,32 @@ class AuthService:
 
             user.password_hash = hash_password(new_password)
             user.updated_at = now
+            for refresh_session in session.scalars(
+                select(RefreshSession).where(RefreshSession.username == normalized_username)
+            ):
+                session.delete(refresh_session)
             session.commit()
+
+    def _create_token_pair(self, user: AuthenticatedUser) -> TokenPair:
+        refresh_token = secrets.token_urlsafe(48)
+        now = DateBounds.now()
+        refresh_session = RefreshSession(
+            username=user.username,
+            token_hash=self._refresh_token_hash(refresh_token),
+            expires_at=now + timedelta(days=settings.jwt_refresh_token_expire_days),
+            created_at=now,
+        )
+        with self._database.session() as session:
+            session.add(refresh_session)
+            session.commit()
+        return TokenPair(
+            access_token=create_access_token(user.username, user.id),
+            refresh_token=refresh_token,
+            token_type="bearer",
+        )
+
+    def _refresh_token_hash(self, refresh_token: str) -> str:
+        return hashlib.sha256(refresh_token.encode()).hexdigest()
 
     def authenticate(self, username: str, password: str) -> AuthenticatedUser:
         normalized_username = self._normalize_username(username)

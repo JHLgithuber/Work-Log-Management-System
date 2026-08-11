@@ -11,4 +11,5 @@ public sealed record AppSettingsResult(
     string ApiBaseUrl,
     string ThemeMode,
     string AccessToken = "",
+    string RefreshToken = "",
     string Username = "");
