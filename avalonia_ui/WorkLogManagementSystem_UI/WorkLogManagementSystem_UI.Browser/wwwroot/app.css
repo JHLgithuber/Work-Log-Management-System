@@ -17,70 +17,121 @@ body,
     overflow: hidden;
 }
 
-/*
- * Avalonia uses a transparent native input for browser IME composition.
- * Keeping it viewport-relative prevents Chromium from horizontally scrolling
- * the whole page when a long composition moves the input outside the canvas.
- */
+/* Keep Avalonia's browser IME input from scrolling the viewport. */
 .avalonia-input-element {
     position: fixed !important;
 }
 
-/* HTML styles for the splash screen */
 .avalonia-splash {
     position: absolute;
-    height: 100%;
-    width: 100%;
-    background: white;
-    font-family: 'Outfit', sans-serif;
-    justify-content: center;
-    align-items: center;
-    display: flex;
+    inset: 0;
+    z-index: 9999;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    padding: 24px;
+    overflow: hidden;
+    color: #152649;
+    background:
+        radial-gradient(circle at 50% 42%, rgba(71, 141, 245, 0.18), transparent 34%),
+        linear-gradient(145deg, #fbfdff 0%, #eef4ff 100%);
+    font-family: Inter, "Noto Sans KR", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     pointer-events: none;
 }
 
-/* Light theme styles */
-@media (prefers-color-scheme: light) {
-    .avalonia-splash {
-        background: white;
+.splash-card {
+    display: flex;
+    width: min(420px, 100%);
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.splash-logo {
+    width: clamp(156px, 34vw, 220px);
+    height: auto;
+    margin-bottom: 10px;
+    filter: drop-shadow(0 18px 28px rgba(20, 58, 121, 0.16));
+}
+
+.splash-eyebrow {
+    margin: 0 0 8px;
+    color: #1678e8;
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.24em;
+}
+
+.avalonia-splash h1 {
+    margin: 0;
+    font-size: clamp(1.45rem, 5vw, 2rem);
+    font-weight: 750;
+    letter-spacing: -0.035em;
+}
+
+.splash-status {
+    margin: 10px 0 20px;
+    color: #63708b;
+    font-size: 0.88rem;
+}
+
+.splash-progress {
+    width: min(220px, 62vw);
+    height: 4px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(34, 103, 210, 0.13);
+}
+
+.splash-progress span {
+    display: block;
+    width: 42%;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #21c6c0, #238df5);
+    animation: splash-progress 1.15s ease-in-out infinite;
+}
+
+.avalonia-splash.splash-close {
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 200ms ease, visibility 0s linear 200ms;
+}
+
+@keyframes splash-progress {
+    from {
+        transform: translateX(-115%);
     }
 
-    .avalonia-splash h2 {
-        color: #1b2a4e;
-    }
-
-    .avalonia-splash a {
-        color: #0D6EFD;
+    to {
+        transform: translateX(255%);
     }
 }
 
 @media (prefers-color-scheme: dark) {
     .avalonia-splash {
-        background: #1b2a4e;
+        color: #f5f8ff;
+        background:
+            radial-gradient(circle at 50% 42%, rgba(39, 139, 245, 0.22), transparent 36%),
+            linear-gradient(145deg, #14223c 0%, #0d172a 100%);
     }
 
-    .avalonia-splash h2 {
-        color: white;
+    .splash-eyebrow {
+        color: #55b6ff;
     }
 
-    .avalonia-splash a {
-        color: white;
+    .splash-status {
+        color: #aebbd1;
+    }
+
+    .splash-progress {
+        background: rgba(134, 181, 255, 0.16);
     }
 }
 
-.avalonia-splash h2 {
-    font-weight: 400;
-    font-size: 1.5rem;
-}
-
-.avalonia-splash a {
-    text-decoration: none;
-    font-size: 2.5rem;
-    display: block;   
-}
-
-.avalonia-splash.splash-close {
-    transition: opacity 200ms, display 200ms;
-    display: none;
-    opacity: 0;
+@media (prefers-reduced-motion: reduce) {
+    .splash-progress span {
+        width: 100%;
+        animation: none;
+    }
 }
