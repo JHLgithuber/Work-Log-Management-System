@@ -27,6 +27,11 @@
             <SolidColorBrush x:Key="AppTopActionHoverBorderBrush" Color="#8ABCE8"/>
             <SolidColorBrush x:Key="AppTopActionPressedBackgroundBrush" Color="#243346"/>
             <SolidColorBrush x:Key="AppTopActionAccentHoverBorderBrush" Color="#79D7C0"/>
+            <SolidColorBrush x:Key="AppCaptionButtonBackgroundBrush" Color="#E6ECF3"/>
+            <SolidColorBrush x:Key="AppCaptionButtonForegroundBrush" Color="#162235"/>
+            <SolidColorBrush x:Key="AppCaptionButtonHoverBrush" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="AppCaptionButtonPressedBrush" Color="#C9D3DF"/>
+            <SolidColorBrush x:Key="AppCaptionClosePressedBrush" Color="#8F2D39"/>
             <SolidColorBrush x:Key="AppToolbarButtonBackgroundBrush" Color="#FFFFFF"/>
             <SolidColorBrush x:Key="AppToolbarButtonForegroundBrush" Color="#162235"/>
             <SolidColorBrush x:Key="AppPrimaryBrush" Color="#226C5D"/>

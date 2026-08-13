@@ -24,6 +24,7 @@ public partial class MainView : UserControl
 {
     private const double NarrowWidthThreshold = 660;
     private const double CompactWidthThreshold = 420;
+    private const double DesktopWindowControlsBreakpointAllowance = 160;
     private const double ThreeColumnDateThreshold = 720;
     private const double TwoColumnDateThreshold = 390;
     private const double CompactEditorActionsWidth = 328;
@@ -83,10 +84,21 @@ public partial class MainView : UserControl
             if (_hostWindow is not null)
             {
                 _hostWindow.Closing -= OnHostWindowClosing;
+                _hostWindow.PropertyChanged -= OnHostWindowPropertyChanged;
             }
 
             _hostWindow = window;
             _hostWindow.Closing += OnHostWindowClosing;
+            _hostWindow.PropertyChanged += OnHostWindowPropertyChanged;
+        }
+
+        bool hasDesktopWindow = topLevel is Window;
+        DesktopWindowControls.IsVisible = hasDesktopWindow;
+        if (hasDesktopWindow)
+        {
+            TopBar.IsVisible = true;
+            UpdateDesktopWindowControls();
+            UpdateResponsiveLayout(Bounds.Width);
         }
 
         if (!OperatingSystem.IsAndroid() || topLevel is null)
@@ -121,6 +133,7 @@ public partial class MainView : UserControl
         if (_hostWindow is not null)
         {
             _hostWindow.Closing -= OnHostWindowClosing;
+            _hostWindow.PropertyChanged -= OnHostWindowPropertyChanged;
             _hostWindow = null;
         }
 
@@ -387,6 +400,73 @@ public partial class MainView : UserControl
         viewModel.RequestCloseWithUnsavedChanges();
     }
 
+    private void OnHostWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs eventArgs)
+    {
+        if (eventArgs.Property == Window.WindowStateProperty)
+        {
+            UpdateDesktopWindowControls();
+        }
+    }
+
+    private void OnDesktopTitleBarPointerPressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (_hostWindow is null ||
+            !eventArgs.GetCurrentPoint(this).Properties.IsLeftButtonPressed ||
+            eventArgs.Source is Visual visual &&
+            (visual is Button || visual.FindAncestorOfType<Button>() is not null))
+        {
+            return;
+        }
+
+        if (eventArgs.ClickCount == 2)
+        {
+            ToggleDesktopMaximizeRestore();
+        }
+        else
+        {
+            _hostWindow.BeginMoveDrag(eventArgs);
+        }
+
+        eventArgs.Handled = true;
+    }
+
+    private void OnDesktopMinimizeClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (_hostWindow is not null)
+        {
+            _hostWindow.WindowState = WindowState.Minimized;
+        }
+    }
+
+    private void OnDesktopMaximizeRestoreClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        ToggleDesktopMaximizeRestore();
+    }
+
+    private void OnDesktopCloseClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _hostWindow?.Close();
+    }
+
+    private void ToggleDesktopMaximizeRestore()
+    {
+        if (_hostWindow is null)
+        {
+            return;
+        }
+
+        _hostWindow.WindowState = _hostWindow.WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
+    }
+
+    private void UpdateDesktopWindowControls()
+    {
+        bool isMaximized = _hostWindow?.WindowState == WindowState.Maximized;
+        DesktopMaximizeIcon.IsVisible = !isMaximized;
+        DesktopRestoreIcon.IsVisible = isMaximized;
+    }
+
     private void OnCloseWindowRequested(object? sender, EventArgs eventArgs)
     {
         if (_hostWindow is null)
@@ -445,7 +525,14 @@ public partial class MainView : UserControl
 
         UpdateModalWidths(width);
 
-        bool shouldUseNarrowLayout = width < NarrowWidthThreshold;
+        // Desktop caption controls permanently consume the right side of the top bar.
+        // Shift only the desktop breakpoints by their occupied width so toolbar
+        // information collapses before it can overlap the window controls.
+        double breakpointWidth = DesktopWindowControls.IsVisible
+            ? Math.Max(0, width - DesktopWindowControlsBreakpointAllowance)
+            : width;
+
+        bool shouldUseNarrowLayout = breakpointWidth < NarrowWidthThreshold;
         if (shouldUseNarrowLayout != _isNarrowLayout)
         {
             _isNarrowLayout = shouldUseNarrowLayout;
@@ -457,7 +544,7 @@ public partial class MainView : UserControl
 
         if (_isNarrowLayout)
         {
-            double shellMargin = width < CompactWidthThreshold ? 6 : 10;
+            double shellMargin = breakpointWidth < CompactWidthThreshold ? 6 : 10;
             ResponsiveShell.ColumnDefinitions = new ColumnDefinitions("*");
             ResponsiveShell.RowDefinitions = new RowDefinitions("*");
             ResponsiveShell.Margin = new Avalonia.Thickness(0);
@@ -486,7 +573,7 @@ public partial class MainView : UserControl
             TaskPaneCloseButton.IsVisible = true;
             TaskPaneActionStrip.IsVisible = true;
             TopBarSessionInfo.IsVisible = false;
-            ApplyCompactToolbar(width);
+            ApplyCompactToolbar(breakpointWidth);
             ApplyCompactEditor(width - (shellMargin * 2) - 32);
         }
         else
@@ -615,15 +702,19 @@ public partial class MainView : UserControl
     private void ApplyRegularToolbar()
     {
         MoveTopBarActionsToTopBar();
-        TopBarShell.ColumnDefinitions = new ColumnDefinitions("*,Auto");
+        TopBarShell.ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto");
         TopBarShell.RowDefinitions = new RowDefinitions("Auto");
         Grid.SetColumn(TopBarInfoGroup, 0);
         Grid.SetRow(TopBarInfoGroup, 0);
         Grid.SetColumn(TopBarActionGroup, 1);
         Grid.SetRow(TopBarActionGroup, 0);
+        Grid.SetColumn(DesktopWindowControls, 2);
+        Grid.SetRow(DesktopWindowControls, 0);
         TopBarActionGroup.IsVisible = true;
         TopBarActionGroup.Margin = new Avalonia.Thickness(0);
-        TopBar.Padding = new Avalonia.Thickness(10, 8);
+        TopBar.Padding = DesktopWindowControls.IsVisible
+            ? new Avalonia.Thickness(10, 8, 0, 8)
+            : new Avalonia.Thickness(10, 8);
         AppTitleText.FontSize = 22;
         CurrentScopeText.IsVisible = true;
     }
@@ -632,13 +723,21 @@ public partial class MainView : UserControl
     {
         MoveTopBarActionsToTaskPane();
         bool phoneWidth = width < CompactWidthThreshold;
-        TopBarShell.ColumnDefinitions = new ColumnDefinitions("*");
+        TopBarShell.ColumnDefinitions = new ColumnDefinitions("*,Auto");
         TopBarShell.RowDefinitions = new RowDefinitions("Auto");
         Grid.SetColumn(TopBarInfoGroup, 0);
         Grid.SetRow(TopBarInfoGroup, 0);
+        Grid.SetColumn(DesktopWindowControls, 1);
+        Grid.SetRow(DesktopWindowControls, 0);
         TopBarActionGroup.Margin = new Avalonia.Thickness(0);
 
-        TopBar.Padding = phoneWidth ? new Avalonia.Thickness(8, 6) : new Avalonia.Thickness(10, 8);
+        TopBar.Padding = DesktopWindowControls.IsVisible
+            ? phoneWidth
+                ? new Avalonia.Thickness(8, 6, 0, 6)
+                : new Avalonia.Thickness(10, 8, 0, 8)
+            : phoneWidth
+                ? new Avalonia.Thickness(8, 6)
+                : new Avalonia.Thickness(10, 8);
         AppTitleText.FontSize = phoneWidth ? 18 : 20;
         CurrentScopeText.IsVisible = !phoneWidth;
     }

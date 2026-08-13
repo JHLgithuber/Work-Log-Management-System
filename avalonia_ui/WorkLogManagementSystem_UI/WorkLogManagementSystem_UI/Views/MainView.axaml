@@ -64,6 +64,59 @@
       <Setter Property="Height" Value="38"/>
       <Setter Property="Padding" Value="0"/>
     </Style>
+    <Style Selector="Button.caption-button">
+      <Setter Property="Width" Value="38"/>
+      <Setter Property="Height" Value="38"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Background" Value="{DynamicResource AppCaptionButtonBackgroundBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppCaptionButtonForegroundBrush}"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="CornerRadius" Value="4"/>
+      <Setter Property="Focusable" Value="False"/>
+      <Setter Property="FocusAdorner" Value="{x:Null}"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.caption-button /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AppCaptionButtonBackgroundBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppCaptionButtonForegroundBrush}"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="CornerRadius" Value="4"/>
+    </Style>
+    <Style Selector="Button.caption-button:pointerover">
+      <Setter Property="Background" Value="{DynamicResource AppCaptionButtonHoverBrush}"/>
+    </Style>
+    <Style Selector="Button.caption-button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AppCaptionButtonHoverBrush}"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="Button.caption-button:pressed">
+      <Setter Property="Background" Value="{DynamicResource AppCaptionButtonPressedBrush}"/>
+    </Style>
+    <Style Selector="Button.caption-button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AppCaptionButtonPressedBrush}"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="Button.caption-close:pointerover">
+      <Setter Property="Background" Value="{DynamicResource AppDangerBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+    </Style>
+    <Style Selector="Button.caption-close:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AppDangerBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppDangerBrush}"/>
+    </Style>
+    <Style Selector="Button.caption-close:pressed">
+      <Setter Property="Background" Value="{DynamicResource AppCaptionClosePressedBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+    </Style>
+    <Style Selector="Button.caption-close:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AppCaptionClosePressedBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppCaptionClosePressedBrush}"/>
+    </Style>
     <Style Selector="Button.toolbar-accent">
       <Setter Property="Background" Value="{DynamicResource AppAccentBrush}"/>
       <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
@@ -148,13 +201,15 @@
             Padding="10,8"
             IsVisible="{Binding IsBackendConnected}">
       <Grid x:Name="TopBarShell"
-            ColumnDefinitions="*,Auto"
-            ColumnSpacing="12"
+            ColumnDefinitions="*,Auto,Auto"
+            ColumnSpacing="8"
             VerticalAlignment="Center">
         <WrapPanel x:Name="TopBarInfoGroup"
                    Grid.Column="0"
                    Orientation="Horizontal"
-                   VerticalAlignment="Center">
+                   Background="Transparent"
+                   VerticalAlignment="Center"
+                   PointerPressed="OnDesktopTitleBarPointerPressed">
           <Button x:Name="TaskPaneToggleButton"
                   Classes="icon-toolbar topbar-action"
                   Margin="0,0,8,0"
@@ -224,6 +279,49 @@
             <PathIcon Width="18"
                       Height="18"
                       Data="M5 20H19V18H5V20ZM19 9H15V3H9V9H5L12 16L19 9Z"/>
+          </Button>
+        </StackPanel>
+
+        <StackPanel x:Name="DesktopWindowControls"
+                    Grid.Column="2"
+                    Orientation="Horizontal"
+                    Spacing="6"
+                    Margin="0,0,10,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    IsVisible="False">
+          <Border Width="1"
+                  Height="24"
+                  Margin="4,0"
+                  Background="#4CFFFFFF"/>
+          <Button Classes="caption-button"
+                  ToolTip.Tip="최소화"
+                  Click="OnDesktopMinimizeClicked">
+            <PathIcon Width="14"
+                      Height="14"
+                      Data="M4 11H20V13H4Z"/>
+          </Button>
+          <Button Classes="caption-button"
+                  ToolTip.Tip="최대화 또는 복원"
+                  Click="OnDesktopMaximizeRestoreClicked">
+            <Grid Width="14" Height="14">
+              <PathIcon x:Name="DesktopMaximizeIcon"
+                        Width="14"
+                        Height="14"
+                        Data="M4 4H20V6H4ZM4 18H20V20H4ZM4 6H6V18H4ZM18 6H20V18H18Z"/>
+              <PathIcon x:Name="DesktopRestoreIcon"
+                        Width="14"
+                        Height="14"
+                        IsVisible="False"
+                        Data="M8 4H20V6H8ZM18 6H20V16H18ZM4 8H16V10H4ZM4 18H16V20H4ZM4 10H6V18H4ZM14 10H16V18H14Z"/>
+            </Grid>
+          </Button>
+          <Button Classes="caption-button caption-close"
+                  ToolTip.Tip="종료"
+                  Click="OnDesktopCloseClicked">
+            <PathIcon Width="14"
+                      Height="14"
+                      Data="M5.7 4.3L12 10.6L18.3 4.3L19.7 5.7L13.4 12L19.7 18.3L18.3 19.7L12 13.4L5.7 19.7L4.3 18.3L10.6 12L4.3 5.7Z"/>
           </Button>
         </StackPanel>
       </Grid>

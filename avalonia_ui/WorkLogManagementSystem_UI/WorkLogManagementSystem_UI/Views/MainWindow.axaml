@@ -1,6 +1,5 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:vm="using:WorkLogManagementSystem_UI.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:views="clr-namespace:WorkLogManagementSystem_UI.Views"
@@ -8,9 +7,82 @@
         x:Class="WorkLogManagementSystem_UI.Views.MainWindow"
         Icon="/Assets/avalonia-logo.ico"
         Title="Work Log Management System"
+        SystemDecorations="None"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="NoChrome"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        TransparencyBackgroundFallback="Transparent"
         Width="1180"
         Height="760"
         MinWidth="320"
         MinHeight="480">
-        <views:MainView />
+  <Grid>
+    <Border x:Name="WindowFrame"
+            Background="{DynamicResource AppPageBackgroundBrush}"
+            BorderThickness="0"
+            ClipToBounds="True">
+      <views:MainView/>
+    </Border>
+
+    <Grid x:Name="ResizeHandles">
+      <Border Width="6"
+              HorizontalAlignment="Left"
+              Background="Transparent"
+              Cursor="SizeWestEast"
+              Tag="West"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <Border Width="6"
+              HorizontalAlignment="Right"
+              Background="Transparent"
+              Cursor="SizeWestEast"
+              Tag="East"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <Border Height="6"
+              VerticalAlignment="Top"
+              Background="Transparent"
+              Cursor="SizeNorthSouth"
+              Tag="North"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <Border Height="6"
+              VerticalAlignment="Bottom"
+              Background="Transparent"
+              Cursor="SizeNorthSouth"
+              Tag="South"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+
+      <Border Width="10"
+              Height="10"
+              HorizontalAlignment="Left"
+              VerticalAlignment="Top"
+              Background="Transparent"
+              Cursor="TopLeftCorner"
+              Tag="NorthWest"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <Border Width="10"
+              Height="10"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Top"
+              Background="Transparent"
+              Cursor="TopRightCorner"
+              Tag="NorthEast"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <Border Width="10"
+              Height="10"
+              HorizontalAlignment="Left"
+              VerticalAlignment="Bottom"
+              Background="Transparent"
+              Cursor="BottomLeftCorner"
+              Tag="SouthWest"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <Border Width="10"
+              Height="10"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Bottom"
+              Background="Transparent"
+              Cursor="BottomRightCorner"
+              Tag="SouthEast"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+    </Grid>
+  </Grid>
 </Window>
