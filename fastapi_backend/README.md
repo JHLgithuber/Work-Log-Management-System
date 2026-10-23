@@ -12,6 +12,22 @@
 - 상태 확인: `GET /health`
 - OpenAPI 문서: `/docs`
 
+## 로컬 회귀 테스트
+
+Python 3.12 이상과 uv를 사용합니다.
+
+```bash
+cd fastapi_backend
+uv sync --locked --group test --no-install-package mariadb
+uv run --no-sync pytest
+```
+
+SQLite 테스트만 실행하므로 MariaDB 네이티브 드라이버 설치는 생략합니다. MariaDB 서버를 실제로 사용할 환경은 일반 `uv sync`로 해당 드라이버까지 설치해야 합니다.
+
+테스트는 `.env`를 읽지 않으며, 매 테스트마다 임시 디렉터리에 새 SQLite DB를 생성합니다. 저장소의 `worklog.sqlite3`나 실행 중인 API에는 접근하지 않습니다. 테스트 업무일자는 실행일 기준 365일 이후로 계산합니다.
+
+계정과 업무 소유권의 재시작 후 보존, 레거시 스키마 변환, 업무·일별 기록·비고 CRUD, 사용자 간 격리, 과업 계층 변경·삭제, 날짜 검증과 한국 시간대 필터, 잘못된 인증 토큰, Excel 내보내기를 검증합니다.
+
 ## 준비 사항
 
 - Docker Engine 또는 Docker Desktop

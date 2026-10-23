@@ -56,6 +56,37 @@ def test_malformed_bearer_token_is_unauthorized_not_server_error(client, endpoin
     assert response.headers["www-authenticate"] == "Bearer"
 
 
+def test_export_handles_pasted_control_characters(client, user_headers, task_payload, future_date):
+    task_payload["content"] = "한글 😀 copied\x00\x0b\x1f from another app & <tag>\t\n"
+    created = client.post("/tasks", json=task_payload, headers=user_headers)
+    assert created.status_code == 201
+    task_id = created.json()["id"]
+    entry = client.put(
+        f"/tasks/{task_id}/entries/{future_date}",
+        json={"performed_content": "Synthetic entry\x07 completed", "retrospective": "\t Good\n"},
+        headers=user_headers,
+    )
+    assert entry.status_code == 200
+    response = client.get(
+        "/tasks/export.xlsx",
+        params={"start_date": str(future_date), "end_date": str(future_date)},
+        headers=user_headers,
+    )
+    assert response.status_code == 200
+    with ZipFile(BytesIO(response.content)) as archive:
+        for name in archive.namelist():
+            if name.endswith(".xml") or name.endswith(".rels"):
+                ElementTree.fromstring(archive.read(name))
+        worksheet = ElementTree.fromstring(archive.read("xl/worksheets/sheet1.xml"))
+        ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+        cell_texts = [element.text for element in worksheet.findall(".//s:t", ns)]
+        assert "한글 😀 copied��� from another app & <tag>\t\n" in cell_texts
+        assert "\t Good\n" in cell_texts
+        assert all(element.get("{http://www.w3.org/XML/1998/namespace}space") == "preserve"
+                   for element in worksheet.findall(".//s:t", ns))
+    assert client.get(f"/tasks/{task_id}", headers=user_headers).json()["content"] == task_payload["content"]
+
+
 def test_restart_preserves_account_without_tasks(database, user_headers, client):
     database.initialize()
     database.initialize()
