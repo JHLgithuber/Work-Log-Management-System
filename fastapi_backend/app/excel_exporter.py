@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from io import BytesIO
@@ -31,6 +32,12 @@ class TaskCard:
 
 
 class WorksheetBuilder:
+    # Pasted control characters are valid in JSON/SQLite but not in XML 1.0.
+    # Replace them only in the workbook, without changing the stored text.
+    _INVALID_XML_CHARACTERS = re.compile(
+        r"[^\x09\x0a\x0d\x20-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]"
+    )
+
     def __init__(self, sheet_date: date) -> None:
         self._sheet_date: date = sheet_date
         self._cells: dict[int, dict[int, str]] = {}
@@ -42,9 +49,10 @@ class WorksheetBuilder:
     def set_cell(self, row: int, column: int, value: object, style: int = 0) -> None:
         self._max_row = max(self._max_row, row)
         self._max_column = max(self._max_column, column)
-        text: str = escape(str(value))
+        text: str = escape(self._INVALID_XML_CHARACTERS.sub("\ufffd", str(value)))
         self._cells.setdefault(row, {})[column] = (
-            f'<c r="{self._cell_name(row, column)}" s="{style}" t="inlineStr"><is><t>{text}</t></is></c>'
+            f'<c r="{self._cell_name(row, column)}" s="{style}" t="inlineStr">'
+            f'<is><t xml:space="preserve">{text}</t></is></c>'
         )
 
     def set_blank(self, row: int, column: int, style: int = 0) -> None:

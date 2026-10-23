@@ -60,7 +60,7 @@ public sealed class TaskDto
             return "종료 무제한";
         }
 
-        return value.ToLocalTime().ToString("yyyy-MM-dd");
+        return WorkLogCalendar.ToDate(value).ToString("yyyy-MM-dd");
     }
 }
 

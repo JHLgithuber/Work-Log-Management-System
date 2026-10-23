@@ -110,6 +110,8 @@ MANIFEST
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
+# Required source manifest for the Avalonia desktop application.
+!avalonia_ui/WorkLogManagementSystem_UI/WorkLogManagementSystem_UI.Desktop/app.manifest
 *.spec
 
 # Installer logs

@@ -16,9 +16,10 @@ public sealed class WorkLogApiClient : IDisposable
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly HttpClient _httpClient;
 
-    public WorkLogApiClient(string baseUrl, string? accessToken = null)
+    public WorkLogApiClient(string baseUrl, string? accessToken = null, HttpMessageHandler? handler = null)
     {
-        _httpClient = new HttpClient { BaseAddress = new Uri(NormalizeBaseUrl(baseUrl)) };
+        _httpClient = handler is null ? new HttpClient() : new HttpClient(handler, disposeHandler: false);
+        _httpClient.BaseAddress = new Uri(NormalizeBaseUrl(baseUrl));
         if (!string.IsNullOrWhiteSpace(accessToken))
         {
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Trim());

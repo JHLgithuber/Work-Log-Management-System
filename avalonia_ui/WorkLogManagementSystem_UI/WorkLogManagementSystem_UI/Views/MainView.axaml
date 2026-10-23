@@ -193,7 +193,7 @@
 	          </Button>
 	          <Button x:Name="RefreshButton"
                   Classes="icon-toolbar topbar-action"
-                  Command="{Binding LoadTasksCommand}"
+                  Command="{Binding RefreshCommand}"
                   ToolTip.Tip="새로고침"
                   Click="OnTaskPaneMenuActionClicked">
             <PathIcon Width="18"
@@ -388,7 +388,7 @@
                         Command="{Binding DeleteTaskCommand}"/>
                 <Button Content="저장"
                         Classes="primary"
-                        IsEnabled="{Binding IsEditorEnabled}"
+                        IsEnabled="{Binding CanEditTask}"
                         Command="{Binding SaveTaskCommand}"/>
               </StackPanel>
             </Grid>
@@ -400,7 +400,7 @@
                           VerticalScrollBarVisibility="Auto">
               <StackPanel Spacing="14"
                           Margin="0,0,0,16"
-                          IsEnabled="{Binding IsEditorEnabled}">
+                          IsEnabled="{Binding CanEditTask}">
 	                <StackPanel>
 	                  <TextBlock Classes="label"
 	                             Text="제목"/>
