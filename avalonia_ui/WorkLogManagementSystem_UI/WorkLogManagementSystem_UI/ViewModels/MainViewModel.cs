@@ -66,6 +66,18 @@ public partial class MainViewModel : ViewModelBase
     private DateTime? _editorStartDateBaseline;
     private DateTime? _editorDueDateBaseline;
     private DateTime? _editorActualEndDateBaseline;
+    private int _taskLoadOperationVersion;
+    private int _editorContextVersion;
+    private int _sessionVersion;
+    private int _taskWriteVersion;
+    private TaskCompletionSource<int?>? _taskSaveCompletion;
+    private int _taskSaveSessionVersion;
+    private Task<DailyNoteDto>? _dailyNoteSaveTask;
+    private DateTime? _dailyNoteSaveDate;
+    private int _dailyNoteSaveSessionVersion;
+    private string _dailyNoteSaveContent = string.Empty;
+    private string _dailyNoteSaveBaseline = string.Empty;
+    private readonly Func<string, string?, WorkLogApiClient>? _apiClientFactory;
 
     [ObservableProperty] private string _apiBaseUrl = AppDefaultsService.Load().ApiBaseUrl;
     [ObservableProperty] private string _accessToken = string.Empty;
@@ -132,6 +144,9 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private bool _isAuthenticated;
     [ObservableProperty] private bool _isDailyNoteExpanded;
     [ObservableProperty] private bool _isDailyNoteBusy;
+    [ObservableProperty] private bool _isDailyNoteLoaded;
+    [ObservableProperty] private bool _isTaskSaveBusy;
+    [ObservableProperty] private bool _isTaskLoadBusy;
     [ObservableProperty] private string _dailyNoteContent = string.Empty;
     [ObservableProperty] private string _lastSaveElapsedLabel = "마지막 저장 없음";
     [ObservableProperty] private bool _hasUnsavedTaskChanges;
@@ -139,8 +154,18 @@ public partial class MainViewModel : ViewModelBase
 
     public event EventHandler? CloseWindowRequested;
 
-    public MainViewModel()
+    public MainViewModel() : this(null, true)
     {
+    }
+
+    internal MainViewModel(Func<string, string?, WorkLogApiClient>? apiClientFactory, bool initializeConnection)
+    {
+        _apiClientFactory = apiClientFactory;
+        if (!initializeConnection)
+        {
+            return;
+        }
+
         _lastSaveTimer.Interval = TimeSpan.FromSeconds(1);
         _lastSaveTimer.Tick += OnLastSaveTimerTick;
         _lastSaveTimer.Start();
@@ -198,9 +223,10 @@ public partial class MainViewModel : ViewModelBase
     public string ConnectionGateDescription => CanConfigureApiBaseUrl
         ? "업무일지 백엔드 주소와 계정을 입력하세요."
         : "업무일지 계정을 입력하세요.";
-    public bool CanEditExistingTask => IsEditorEnabled && !IsNewTask && SelectedTask is not null;
+    public bool CanEditTask => IsEditorEnabled && !IsTaskSaveBusy && !IsTaskLoadBusy;
+    public bool CanEditExistingTask => CanEditTask && !IsNewTask && SelectedTask is not null;
     public bool CanCreateChildTask =>
-        IsEditorEnabled &&
+        CanEditTask &&
         !IsNewTask &&
         SelectedTask is { ParentId: null };
     public bool CanDeleteSelectedDateEntry =>
@@ -213,7 +239,7 @@ public partial class MainViewModel : ViewModelBase
     public bool IsCredentialSaveSupported => _credentialStore.IsSaveSupported;
     public bool IsCredentialSaveUnsupported => !_credentialStore.IsSaveSupported;
     public string CredentialSaveUnsupportedReason => _credentialStore.UnsupportedReason;
-    public bool CanEditDailyNote => SelectedDate is not null && IsBackendConnected && IsAuthenticated && !IsDailyNoteBusy;
+    public bool CanEditDailyNote => SelectedDate is not null && IsBackendConnected && IsAuthenticated && IsDailyNoteLoaded && !IsDailyNoteBusy;
 
     partial void OnSelectedDateChanged(DateTime? oldValue, DateTime? newValue)
     {
@@ -248,6 +274,7 @@ public partial class MainViewModel : ViewModelBase
 
     private void BeginSelectedDateChange()
     {
+        _editorContextVersion++;
         _ = LoadTasksAsync();
         _ = LoadDailyNoteAsync();
         LoadSelectedTaskEntry();
@@ -305,6 +332,7 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnIsEditorEnabledChanged(bool value)
     {
+        OnPropertyChanged(nameof(CanEditTask));
         OnPropertyChanged(nameof(EditorModeLabel));
         OnPropertyChanged(nameof(CanEditExistingTask));
         OnPropertyChanged(nameof(CanDeleteSelectedDateEntry));
@@ -383,6 +411,8 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnIsAuthenticatedChanged(bool value)
     {
+        _sessionVersion++;
+        InvalidatePendingReads();
         OnPropertyChanged(nameof(IsConnectionGateVisible));
         OnPropertyChanged(nameof(IsLoggedInStatusVisible));
         OnPropertyChanged(nameof(CanEditDailyNote));
@@ -394,6 +424,38 @@ public partial class MainViewModel : ViewModelBase
         {
             SetDailyNoteContentFromServer(string.Empty);
         }
+    }
+
+    private void InvalidatePendingReads()
+    {
+        _taskLoadOperationVersion++;
+        _dailyNoteOperationVersion++;
+        _loadCancellationTokenSource?.Cancel();
+        _dailyNoteCancellationTokenSource?.Cancel();
+        IsDailyNoteLoaded = false;
+        IsDailyNoteBusy = false;
+        IsTaskLoadBusy = false;
+    }
+
+    partial void OnIsTaskLoadBusyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanCreateChildTask));
+        OnPropertyChanged(nameof(CanDeleteSelectedDateEntry));
+        OnPropertyChanged(nameof(CanEditTask));
+        OnPropertyChanged(nameof(CanEditExistingTask));
+    }
+
+    partial void OnIsTaskSaveBusyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanCreateChildTask));
+        OnPropertyChanged(nameof(CanDeleteSelectedDateEntry));
+        OnPropertyChanged(nameof(CanEditTask));
+        OnPropertyChanged(nameof(CanEditExistingTask));
+    }
+
+    partial void OnIsDailyNoteLoadedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanEditDailyNote));
     }
 
     partial void OnIsDailyNoteBusyChanged(bool value)
@@ -453,27 +515,59 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private async Task RefreshAsync()
+    {
+        await Task.WhenAll(LoadTasksAsync(), LoadDailyNoteAsync());
+    }
+
+    [RelayCommand]
     private async Task LoadTasksAsync()
     {
+        _loadCancellationTokenSource?.Cancel();
+        _loadCancellationTokenSource?.Dispose();
+        _loadCancellationTokenSource = null;
+        int operationVersion = ++_taskLoadOperationVersion;
+        IsTaskLoadBusy = false;
         if (SelectedDate is null || !IsBackendConnected || !IsAuthenticated)
         {
             return;
         }
 
-        _loadCancellationTokenSource?.Cancel();
+        DateTime requestedDate = SelectedDate.Value.Date;
+        int sessionVersion = _sessionVersion;
+        int writeVersion = _taskWriteVersion;
+        Task<int?>? pendingSave = _taskSaveSessionVersion == sessionVersion ? _taskSaveCompletion?.Task : null;
+        IsTaskLoadBusy = true;
         _loadCancellationTokenSource = new CancellationTokenSource();
         CancellationToken cancellationToken = _loadCancellationTokenSource.Token;
 
+        bool IsCurrentRequest() => operationVersion == _taskLoadOperationVersion &&
+            sessionVersion == _sessionVersion && writeVersion == _taskWriteVersion &&
+            IsAuthenticated && SelectedDate?.Date == requestedDate;
         try
         {
             CaptureExpansionState(Tasks);
             int? focusedTaskId = SelectedTask?.Id ?? _activeEditorTask?.Id;
             using WorkLogApiClient client = CreateAuthenticatedClient();
+            // Wait for both task and entry writes before reading. This also
+            // covers navigating away and back, or selecting another task.
+            if (pendingSave is not null)
+            {
+                int? failedEditorContext = await pendingSave;
+                if (!IsCurrentRequest() || failedEditorContext == _editorContextVersion)
+                {
+                    // Only preserve the unchanged editor's failed-save draft.
+                    // A different date/selection still needs its own fresh list.
+                    return;
+                }
+            }
+
             IReadOnlyList<TaskDto> loadedTasks = await client.GetTasksAsync(
-                SelectedDate.Value,
+                requestedDate,
                 focusedTaskId,
                 cancellationToken);
-            ApplyTaskDisplayState(loadedTasks, SelectedDate.Value);
+            if (!IsCurrentRequest()) return;
+            ApplyTaskDisplayState(loadedTasks, requestedDate);
             int? selectedTaskId = SelectedTask?.Id ?? focusedTaskId;
             TaskDto? reloadedTask = null;
             _isApplyingTaskSelection = true;
@@ -498,7 +592,7 @@ public partial class MainViewModel : ViewModelBase
                     BeginEdit(reloadedTask);
                 }
             }
-            else if (!IsNewTask)
+            else if (!IsNewTask && !HasUnsavedTaskChanges)
             {
                 ClearEditor();
             }
@@ -508,13 +602,30 @@ public partial class MainViewModel : ViewModelBase
         }
         catch (Exception error)
         {
-            StatusMessage = $"로드 실패: {error.Message}";
-            ShowServerCommunicationFailure(error, "과업 로드 실패");
+            if (IsCurrentRequest())
+            {
+                StatusMessage = $"로드 실패: {error.Message}";
+                ShowServerCommunicationFailure(error, "과업 로드 실패");
+            }
+        }
+        finally
+        {
+            if (operationVersion == _taskLoadOperationVersion)
+            {
+                IsTaskLoadBusy = false;
+            }
         }
     }
 
     private async Task LoadDailyNoteAsync()
     {
+        if (HasUnsavedDailyNoteChanges && _dailyNoteSaveTask is null && IsAuthenticated && IsDailyNoteLoaded) return;
+        _dailyNoteCancellationTokenSource?.Cancel();
+        _dailyNoteCancellationTokenSource?.Dispose();
+        _dailyNoteCancellationTokenSource = null;
+        int operationVersion = ++_dailyNoteOperationVersion;
+        IsDailyNoteLoaded = false;
+        IsDailyNoteBusy = false;
         if (SelectedDate is null || !IsBackendConnected || !IsAuthenticated)
         {
             SetDailyNoteContentFromServer(string.Empty);
@@ -522,20 +633,27 @@ public partial class MainViewModel : ViewModelBase
         }
 
         DateTime requestedDate = SelectedDate.Value.Date;
-        _dailyNoteCancellationTokenSource?.Cancel();
+        // Refreshing this same day must observe the pending write, not race it
+        // with a GET that can still return the previous server value.
+        Task<DailyNoteDto>? pendingSave = _dailyNoteSaveDate == requestedDate &&
+            _dailyNoteSaveSessionVersion == _sessionVersion ? _dailyNoteSaveTask : null;
+        string pendingSaveContent = _dailyNoteSaveContent;
+        string pendingSaveBaseline = _dailyNoteSaveBaseline;
         _dailyNoteCancellationTokenSource = new CancellationTokenSource();
         CancellationToken cancellationToken = _dailyNoteCancellationTokenSource.Token;
-        int operationVersion = ++_dailyNoteOperationVersion;
         SetDailyNoteContentFromServer(string.Empty);
         IsDailyNoteBusy = true;
 
         try
         {
             using WorkLogApiClient client = CreateAuthenticatedClient();
-            DailyNoteDto note = await client.GetDailyNoteAsync(requestedDate, cancellationToken);
+            DailyNoteDto note = pendingSave is null
+                ? await client.GetDailyNoteAsync(requestedDate, cancellationToken)
+                : await pendingSave;
             if (operationVersion == _dailyNoteOperationVersion && SelectedDate?.Date == requestedDate)
             {
                 SetDailyNoteContentFromServer(note.Content);
+                IsDailyNoteLoaded = true;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -545,9 +663,12 @@ public partial class MainViewModel : ViewModelBase
         {
             if (operationVersion == _dailyNoteOperationVersion && SelectedDate?.Date == requestedDate)
             {
-                SetDailyNoteContentFromServer(string.Empty);
-                StatusMessage = $"비고 로드 실패: {error.Message}";
-                ShowServerCommunicationFailure(error, "비고 로드 실패");
+                SetDailyNoteContentFromServer(pendingSave is null ? string.Empty : pendingSaveContent);
+                if (pendingSave is not null) { _dailyNoteBaseline = pendingSaveBaseline; HasUnsavedDailyNoteChanges = true; }
+                IsDailyNoteLoaded = pendingSave is not null;
+                StatusMessage = pendingSave is null
+                    ? $"비고 로드 실패: {error.Message}"
+                    : $"비고 저장 실패: {error.Message}";
             }
         }
         finally
@@ -580,10 +701,15 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             using WorkLogApiClient client = CreateAuthenticatedClient();
-            DailyNoteDto saved = await client.SaveDailyNoteAsync(
+            _dailyNoteSaveDate = noteDate;
+            _dailyNoteSaveSessionVersion = _sessionVersion;
+            _dailyNoteSaveContent = DailyNoteContent;
+            _dailyNoteSaveBaseline = _dailyNoteBaseline;
+            _dailyNoteSaveTask = client.SaveDailyNoteAsync(
                 noteDate,
-                new DailyNoteWriteRequest { Content = DailyNoteContent },
+                new DailyNoteWriteRequest { Content = _dailyNoteSaveContent },
                 CancellationToken.None);
+            DailyNoteDto saved = await _dailyNoteSaveTask;
             if (operationVersion == _dailyNoteOperationVersion && SelectedDate?.Date == noteDate)
             {
                 SetDailyNoteContentFromServer(saved.Content);
@@ -604,6 +730,8 @@ public partial class MainViewModel : ViewModelBase
         }
         finally
         {
+            _dailyNoteSaveTask = null;
+            _dailyNoteSaveDate = null;
             if (operationVersion == _dailyNoteOperationVersion)
             {
                 IsDailyNoteBusy = false;
@@ -670,66 +798,76 @@ public partial class MainViewModel : ViewModelBase
 
     private async Task<bool> SaveTaskCoreAsync()
     {
-        if (!IsEditorEnabled)
-        {
-            return false;
-        }
-
+        if (!CanEditTask) return false;
         if (string.IsNullOrWhiteSpace(EditorTitle))
         {
             StatusMessage = "제목은 반드시 입력해야 합니다.";
             return false;
         }
 
+        DateTime? entryDate = SelectedDate?.Date;
+        WorkEntryWriteRequest entryRequest = new()
+        {
+            PerformedContent = EditorPerformedContent,
+            Retrospective = EditorDailyRetrospective
+        };
+        TaskWriteRequest request = BuildWriteRequest();
+        int? taskId = IsNewTask ? null : SelectedTask?.Id;
+        int editorVersion = _editorContextVersion;
+        int sessionVersion = _sessionVersion;
+        bool IsCurrentEditor() => editorVersion == _editorContextVersion &&
+            sessionVersion == _sessionVersion && SelectedDate?.Date == entryDate;
+        IsTaskSaveBusy = true;
+        var completion = new TaskCompletionSource<int?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _taskSaveCompletion = completion;
+        _taskSaveSessionVersion = sessionVersion;
+        _taskWriteVersion++;
         BeginSaving();
-        bool saveStateCompleted = false;
+        bool writeCompleted = false;
         try
         {
-            TaskWriteRequest request = BuildWriteRequest();
             using WorkLogApiClient client = CreateAuthenticatedClient();
-            bool wasNewTask = IsNewTask || SelectedTask is null;
-            TaskDto savedTask = wasNewTask
+            TaskDto savedTask = taskId is null
                 ? await client.CreateTaskAsync(request, CancellationToken.None)
-                : await client.UpdateTaskAsync(SelectedTask!.Id, request, CancellationToken.None);
-
-            IsNewTask = false;
-            if (wasNewTask)
+                : await client.UpdateTaskAsync(taskId.Value, request, CancellationToken.None);
+            if (IsCurrentEditor())
             {
+                // Preserve the assigned ID even when the following entry write fails.
+                IsNewTask = false;
                 SetSelectedTaskWithoutPrompt(savedTask);
                 _activeEditorTask = savedTask;
             }
-            if (SelectedDate is not null)
-            {
-                await client.SaveWorkEntryAsync(
-                    savedTask.Id,
-                    SelectedDate.Value,
-                    new WorkEntryWriteRequest
-                    {
-                        PerformedContent = EditorPerformedContent,
-                        Retrospective = EditorDailyRetrospective
-                    },
-                    CancellationToken.None);
-            }
+            if (entryDate is not null)
+                await client.SaveWorkEntryAsync(savedTask.Id, entryDate.Value, entryRequest, CancellationToken.None);
 
-            HasUnsavedTaskChanges = false;
-            EditorDisplayTitle = savedTask.Title;
-            CaptureEditorBaseline();
+            if (IsCurrentEditor())
+            {
+                EditorDisplayTitle = savedTask.Title;
+                CaptureEditorBaseline();
+                HasUnsavedTaskChanges = false;
+                StatusMessage = $"저장됨: {savedTask.Title}";
+            }
+            writeCompleted = true;
             MarkSaved();
-            saveStateCompleted = true;
-            await LoadTasksAsync();
-            SelectedTask = FindTaskById(Tasks, savedTask.Id);
-            StatusMessage = $"저장됨: {savedTask.Title}";
+            completion.TrySetResult(null);
+            if (sessionVersion == _sessionVersion && IsAuthenticated) await LoadTasksAsync();
             return true;
         }
         catch (Exception error)
         {
-            if (!saveStateCompleted)
+            if (!writeCompleted) MarkSaveFailed();
+            if (IsCurrentEditor())
             {
-                MarkSaveFailed();
+                StatusMessage = $"저장 실패: {error.Message}";
+                ShowServerCommunicationFailure(error, "저장 실패");
             }
-            StatusMessage = $"저장 실패: {error.Message}";
-            ShowServerCommunicationFailure(error, "저장 실패");
             return false;
+        }
+        finally
+        {
+            completion.TrySetResult(editorVersion);
+            if (ReferenceEquals(_taskSaveCompletion, completion)) _taskSaveCompletion = null;
+            IsTaskSaveBusy = false;
         }
     }
 
@@ -1479,6 +1617,7 @@ public partial class MainViewModel : ViewModelBase
 
     private void BeginNewTaskCore(int? parentId, string parentTitle)
     {
+        _editorContextVersion++;
         SetSelectedTaskWithoutPrompt(null);
         _activeEditorTask = null;
         UpdateEditorWithoutDirtyTracking(() =>
@@ -1505,6 +1644,7 @@ public partial class MainViewModel : ViewModelBase
 
     private void BeginEdit(TaskDto task)
     {
+        _editorContextVersion++;
         _activeEditorTask = task;
         UpdateEditorWithoutDirtyTracking(() =>
         {
@@ -1529,6 +1669,7 @@ public partial class MainViewModel : ViewModelBase
 
     private void ClearEditor()
     {
+        _editorContextVersion++;
         SetSelectedTaskWithoutPrompt(null);
         _activeEditorTask = null;
         UpdateEditorWithoutDirtyTracking(() =>
@@ -1571,6 +1712,7 @@ public partial class MainViewModel : ViewModelBase
 
     private WorkLogApiClient CreateAuthenticatedClient(string? apiBaseUrl = null)
     {
+        if (_apiClientFactory is not null) return _apiClientFactory(apiBaseUrl ?? ApiBaseUrl, AccessToken);
         return new WorkLogApiClient(
             apiBaseUrl ?? ApiBaseUrl,
             AccessToken,

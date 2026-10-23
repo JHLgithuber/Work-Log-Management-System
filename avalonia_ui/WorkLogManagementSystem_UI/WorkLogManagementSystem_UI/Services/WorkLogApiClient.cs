@@ -21,10 +21,11 @@ public sealed class WorkLogApiClient : IDisposable
         string? accessToken = null,
         Func<(string AccessToken, string RefreshToken)>? tokenProvider = null,
         Func<TokenResponse, Task>? tokenUpdated = null,
-        TimeSpan? requestTimeout = null)
+        TimeSpan? requestTimeout = null,
+        HttpMessageHandler? handler = null)
     {
         Uri baseAddress = new(NormalizeBaseUrl(baseUrl));
-        _httpClient = tokenProvider is not null && tokenUpdated is not null
+        _httpClient = handler is not null ? new HttpClient(handler) : tokenProvider is not null && tokenUpdated is not null
             ? new HttpClient(new RefreshingAuthHandler(baseAddress, tokenProvider, tokenUpdated))
             : new HttpClient();
         _httpClient.BaseAddress = baseAddress;
