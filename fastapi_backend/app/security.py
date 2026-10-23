@@ -66,17 +66,20 @@ def decode_access_token(token: str) -> dict[str, Any]:
     if len(parts) != 3:
         raise AuthenticationError("Invalid access token.")
 
-    signing_input = f"{parts[0]}.{parts[1]}".encode()
-    expected_signature = _sign(signing_input)
-    actual_signature = _base64url_decode(parts[2])
-    if not hmac.compare_digest(actual_signature, expected_signature):
-        raise AuthenticationError("Invalid access token.")
-
     try:
+        signing_input = f"{parts[0]}.{parts[1]}".encode()
+        expected_signature = _sign(signing_input)
+        actual_signature = _base64url_decode(parts[2])
+        if not hmac.compare_digest(actual_signature, expected_signature):
+            raise AuthenticationError("Invalid access token.")
+
         header = json.loads(_base64url_decode(parts[0]))
         payload = json.loads(_base64url_decode(parts[1]))
-    except json.JSONDecodeError as error:
+    except (ValueError, TypeError) as error:
         raise AuthenticationError("Invalid access token.") from error
+
+    if not isinstance(header, dict) or not isinstance(payload, dict):
+        raise AuthenticationError("Invalid access token.")
 
     if header.get("alg") != _JWT_ALGORITHM or header.get("typ") != "JWT":
         raise AuthenticationError("Invalid access token.")
