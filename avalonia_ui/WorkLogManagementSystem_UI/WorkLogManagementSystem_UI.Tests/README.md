@@ -1,6 +1,6 @@
 # Frontend regression checks
 
-Requires the .NET 9 SDK. From the repository root:
+Requires the .NET 10 SDK selected by the repository's `global.json`. From the repository root:
 
 ```sh
 dotnet run --project avalonia_ui/WorkLogManagementSystem_UI/WorkLogManagementSystem_UI.Tests -c Release
