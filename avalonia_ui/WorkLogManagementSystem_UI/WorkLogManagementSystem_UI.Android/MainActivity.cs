@@ -15,7 +15,7 @@ using WorkLogManagementSystem_UI.Services;
 namespace WorkLogManagementSystem_UI.Android;
 
 [Activity(
-    Label = "WorkLogManagementSystem_UI.Android",
+    Label = "업무일지 관리체계",
     Theme = "@style/MyTheme.NoActionBar",
     Icon = "@drawable/icon",
     MainLauncher = true,
