@@ -1253,7 +1253,7 @@ public partial class MainViewModel : ViewModelBase
             byte[] content = await client.ExportExcelAsync(startDate.Value, endDate.Value, CancellationToken.None);
             string fileName = $"{startDate:yyyy-MM-dd} - {endDate:yyyy-MM-dd} 업무일지.xlsx";
             string? path = await _exportFileService.SaveExcelAsync(content, fileName, CancellationToken.None);
-            StatusMessage = path is null ? "엑셀 저장을 취소했습니다." : string.Empty;
+            StatusMessage = path is null ? "엑셀 저장을 취소했습니다." : $"엑셀 저장됨: {path}";
         }
         catch (Exception error)
         {
