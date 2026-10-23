@@ -48,6 +48,20 @@ as the current user, without requesting administrator privileges.
 ```sh
 dotnet workload install wasm-tools
 dotnet build avalonia_ui/WorkLogManagementSystem_UI/WorkLogManagementSystem_UI.Browser -c Release
+dotnet publish avalonia_ui/WorkLogManagementSystem_UI/WorkLogManagementSystem_UI.Browser -c Release -o artifacts/browser
+```
+
+Serve the complete `artifacts/browser/wwwroot` directory, including `_framework`.
+For the bundled FastAPI/Synology image, use the repository-root Dockerfile and
+follow [DEPLOYMENT.md](../../DEPLOYMENT.md), not the API-only Dockerfile.
+
+The browser bootstrap supplies the current page's origin as its default API URL.
+Explicit application settings still override the default. Desktop and mobile
+defaults are unchanged. The dependency-free Node.js bootstrap tests use a fake
+runtime and do not replace a real WebAssembly/browser test:
+
+```sh
+node --test avalonia_ui/WorkLogManagementSystem_UI/WorkLogManagementSystem_UI.Browser/tests/bootstrap.test.mjs
 ```
 
 The project enables native WebAssembly linking. Keep that enabled for the real
