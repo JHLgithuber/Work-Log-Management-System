@@ -15,7 +15,7 @@
         TransparencyBackgroundFallback="Transparent"
         Width="1180"
         Height="760"
-        MinWidth="320"
+        MinWidth="400"
         MinHeight="480">
   <Grid>
     <Border x:Name="WindowFrame"

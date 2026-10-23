@@ -215,6 +215,7 @@
                   Margin="0,0,8,0"
                   Click="OnTaskPaneToggleClicked"
                   IsVisible="False"
+                  AutomationProperties.Name="과업 패널"
                   ToolTip.Tip="과업">
             <PathIcon Width="18"
                       Height="18"
@@ -256,6 +257,7 @@
 	          <Button x:Name="SettingsButton"
                   Classes="icon-toolbar topbar-action"
                   Command="{Binding OpenSettingsCommand}"
+                  AutomationProperties.Name="설정"
                   ToolTip.Tip="설정"
                   Click="OnTaskPaneMenuActionClicked">
             <PathIcon Width="18"
@@ -265,6 +267,7 @@
 	          <Button x:Name="RefreshButton"
                   Classes="icon-toolbar topbar-action"
                   Command="{Binding LoadTasksCommand}"
+                  AutomationProperties.Name="새로고침"
                   ToolTip.Tip="새로고침"
                   Click="OnTaskPaneMenuActionClicked">
             <PathIcon Width="18"
@@ -274,6 +277,7 @@
           <Button x:Name="ExportButton"
                   Classes="icon-toolbar-accent topbar-action-accent"
                   Command="{Binding ExportExcelCommand}"
+                  AutomationProperties.Name="엑셀 내보내기"
                   ToolTip.Tip="엑셀 내보내기"
                   Click="OnTaskPaneMenuActionClicked">
             <PathIcon Width="18"
@@ -295,6 +299,7 @@
                   Margin="4,0"
                   Background="#4CFFFFFF"/>
           <Button Classes="caption-button"
+                  AutomationProperties.Name="최소화"
                   ToolTip.Tip="최소화"
                   Click="OnDesktopMinimizeClicked">
             <PathIcon Width="14"
@@ -302,6 +307,7 @@
                       Data="M4 11H20V13H4Z"/>
           </Button>
           <Button Classes="caption-button"
+                  AutomationProperties.Name="최대화 또는 복원"
                   ToolTip.Tip="최대화 또는 복원"
                   Click="OnDesktopMaximizeRestoreClicked">
             <Grid Width="14" Height="14">
@@ -317,6 +323,7 @@
             </Grid>
           </Button>
           <Button Classes="caption-button caption-close"
+                  AutomationProperties.Name="종료"
                   ToolTip.Tip="종료"
                   Click="OnDesktopCloseClicked">
             <PathIcon Width="14"
@@ -360,6 +367,7 @@
                         Width="34"
                         Height="34"
                         Padding="0"
+                        AutomationProperties.Name="과업 패널 확장 또는 복원"
                         ToolTip.Tip="과업 패널 확장">
                   <PathIcon x:Name="ExpandTaskPaneIcon"
                             Width="18"
@@ -374,6 +382,7 @@
                         Padding="0"
                         Click="OnTaskPaneCloseClicked"
                         IsVisible="False"
+                        AutomationProperties.Name="과업 패널 닫기"
                         ToolTip.Tip="닫기">
                   <PathIcon Width="18"
                             Height="18"
@@ -470,7 +479,8 @@
                       ItemsSource="{Binding Tasks}"
                       SelectedItem="{Binding SelectedTask, Mode=TwoWay}">
               <TreeView.Styles>
-                <Style Selector="TreeViewItem">
+                <Style Selector="TreeViewItem"
+                       x:DataType="models:TaskDto">
                   <Setter Property="IsExpanded"
                           Value="{Binding IsExpanded, Mode=TwoWay}"/>
                 </Style>
@@ -773,7 +783,9 @@
             Classes="modal-scrim"
             ZIndex="22"
             IsVisible="{Binding IsChangePasswordDialogOpen}">
-      <Border Classes="modal-card">
+      <Border x:Name="ChangePasswordModalCard"
+              Classes="modal-card">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="16">
           <TextBlock Text="비밀번호 변경"
                      FontSize="20"
@@ -816,6 +828,7 @@
                     Command="{Binding ChangePasswordCommand}"/>
           </StackPanel>
         </StackPanel>
+        </ScrollViewer>
       </Border>
     </Border>
 
@@ -826,6 +839,7 @@
       <Border x:Name="RegisterUserModalCard"
               Classes="modal-card"
               MaxWidth="520">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="16">
           <TextBlock Text="사용자 추가"
                      FontSize="20"
@@ -872,6 +886,7 @@
                     Command="{Binding RegisterUserCommand}"/>
           </StackPanel>
         </StackPanel>
+        </ScrollViewer>
       </Border>
     </Border>
 
@@ -974,7 +989,8 @@
             Classes="modal-scrim"
             ZIndex="21"
             IsVisible="{Binding IsExportRangeDialogOpen}">
-      <Border Classes="modal-card">
+      <Border x:Name="ExportRangeModalCard"
+              Classes="modal-card">
         <StackPanel Spacing="16">
           <TextBlock Text="엑셀 내보내기"
                      FontSize="20"
@@ -1019,7 +1035,8 @@
             Classes="modal-scrim"
             ZIndex="40"
             IsVisible="{Binding IsConnectionErrorDialogOpen}">
-      <Border Classes="modal-card"
+      <Border x:Name="ConnectionErrorModalCard"
+              Classes="modal-card"
               MaxWidth="520"
               MaxHeight="420">
         <Grid RowDefinitions="Auto,*,Auto"
@@ -1071,6 +1088,7 @@
       <Border x:Name="LoginModalCard"
               Classes="modal-card"
               MaxWidth="560">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="18">
 	          <StackPanel Spacing="4">
 	            <TextBlock Text="로그인"
@@ -1147,6 +1165,7 @@
 	                    Command="{Binding LoginCommand}"/>
 	          </StackPanel>
         </StackPanel>
+        </ScrollViewer>
       </Border>
     </Border>
   </Grid>
