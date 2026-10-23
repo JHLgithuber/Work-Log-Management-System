@@ -32,6 +32,20 @@ def test_restart_preserves_only_registered_user_and_owned_tasks(database, client
     assert client.get(f"/tasks/{task['id']}", headers=user_headers).json()["id"] == task["id"]
 
 
+@pytest.mark.parametrize("method", ["POST", "PUT"])
+def test_whitespace_only_title_is_rejected(client, user_headers, task_payload, method):
+    path = "/tasks"
+    if method == "PUT":
+        created = client.post(path, json=task_payload, headers=user_headers)
+        path += f"/{created.json()['id']}"
+    response = client.request(method, path, json={**task_payload, "title": " \t\n "}, headers=user_headers)
+    assert response.status_code == 422
+    if method == "PUT":
+        assert client.get(path, headers=user_headers).json()["title"] == task_payload["title"]
+    else:
+        assert client.get(path, headers=user_headers).json() == []
+
+
 def test_restart_preserves_account_without_tasks(database, user_headers, client):
     database.initialize()
     database.initialize()
