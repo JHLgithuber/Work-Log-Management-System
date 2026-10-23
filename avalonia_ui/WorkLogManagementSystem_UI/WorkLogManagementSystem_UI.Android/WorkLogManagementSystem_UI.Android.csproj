@@ -11,6 +11,7 @@
         <AndroidPackageFormat>apk</AndroidPackageFormat>
         <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
         <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+        <RunAOTCompilation>false</RunAOTCompilation>
         <AndroidSdkDirectory Condition="'$(AndroidSdkDirectory)' == '' and Exists('$(HOME)/Android/Sdk')">$(HOME)/Android/Sdk</AndroidSdkDirectory>
         <_WorkLogApkOutputDirectory Condition="'$(RuntimeIdentifier)' == ''">$(MSBuildProjectDirectory)/bin/$(Configuration)/$(TargetFramework)</_WorkLogApkOutputDirectory>
         <_WorkLogApkOutputDirectory Condition="'$(RuntimeIdentifier)' != ''">$(MSBuildProjectDirectory)/bin/$(Configuration)/$(TargetFramework)/$(RuntimeIdentifier)</_WorkLogApkOutputDirectory>
