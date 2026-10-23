@@ -159,6 +159,17 @@ public sealed class AppSettingsService
             AppSettingsResult? settings = JsonSerializer.Deserialize(
                 json,
                 AppJsonSerializerContext.TypeInfo<AppSettingsResult>());
+            using JsonDocument document = JsonDocument.Parse(json);
+            bool containsLegacyTokens = document.RootElement.TryGetProperty("accessToken", out _) ||
+                document.RootElement.TryGetProperty("refreshToken", out _);
+            if (settings is not null && containsLegacyTokens)
+            {
+                File.WriteAllText(
+                    path,
+                    JsonSerializer.Serialize(settings, AppJsonSerializerContext.TypeInfo<AppSettingsResult>()));
+            }
+
+            RestrictSettingsFilePermissions(path);
             if (settings is null ||
                 string.IsNullOrWhiteSpace(settings.ApiBaseUrl) ||
                 !IsValidThemeMode(settings.ThemeMode))
@@ -187,6 +198,7 @@ public sealed class AppSettingsService
             settings,
             AppJsonSerializerContext.TypeInfo<AppSettingsResult>());
         await File.WriteAllTextAsync(path, json, cancellationToken);
+        RestrictSettingsFilePermissions(path);
     }
 
     private static Window? ResolveMainWindow()
@@ -209,5 +221,27 @@ public sealed class AppSettingsService
         }
 
         return Path.Combine(baseDirectory, SettingsDirectoryName, SettingsFileName);
+    }
+
+    private static void RestrictSettingsFilePermissions(string path)
+    {
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsBrowser())
+        {
+            return;
+        }
+
+        try
+        {
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+        catch (PlatformNotSupportedException)
+        {
+        }
     }
 }

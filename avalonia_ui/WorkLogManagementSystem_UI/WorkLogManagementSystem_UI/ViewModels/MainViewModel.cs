@@ -1348,8 +1348,6 @@ public partial class MainViewModel : ViewModelBase
             ConnectionGateApiBaseUrl = settings.ApiBaseUrl;
         }
 
-        AccessToken = settings.AccessToken;
-        RefreshToken = settings.RefreshToken;
         LoginUsername = settings.Username;
         CurrentUsername = settings.Username;
         ThemeMode = settings.ThemeMode;
@@ -1455,11 +1453,11 @@ public partial class MainViewModel : ViewModelBase
             UpdateTokensAsync);
     }
 
-    private async Task UpdateTokensAsync(TokenResponse tokens)
+    private Task UpdateTokensAsync(TokenResponse tokens)
     {
         AccessToken = tokens.AccessToken;
         RefreshToken = tokens.RefreshToken;
-        await _settingsService.SaveSettingsAsync(CreateSettingsResult(), CancellationToken.None);
+        return Task.CompletedTask;
     }
 
     private void MarkEditorDirty()
@@ -1608,7 +1606,7 @@ public partial class MainViewModel : ViewModelBase
 
     private AppSettingsResult CreateSettingsResult()
     {
-        return new AppSettingsResult(ApiBaseUrl, ThemeMode, AccessToken, RefreshToken, CurrentUsername);
+        return new AppSettingsResult(ApiBaseUrl, ThemeMode, CurrentUsername);
     }
 
     private async void OnHeartbeatTimerTick(object? sender, EventArgs eventArgs)
