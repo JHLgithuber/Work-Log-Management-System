@@ -52,7 +52,12 @@ class AuthRouter:
         self.router.add_api_route("/password", self.change_password, methods=["PUT"], status_code=204)
 
     async def register(self, request: RegisterRequest, authorization: AuthorizationHeader = None) -> UserResponse:
-        await self.current_user(authorization)
+        current_user = await self.current_user(authorization)
+        if not current_user.is_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Administrator privileges are required to register users.",
+            )
         try:
             user = await self._service.register(request.username, request.password, request.display_name)
             return UserResponse.from_domain(user)

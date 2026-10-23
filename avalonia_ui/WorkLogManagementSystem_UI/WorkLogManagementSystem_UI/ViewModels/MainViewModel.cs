@@ -58,6 +58,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string _refreshToken = string.Empty;
     [ObservableProperty] private string _currentUsername = string.Empty;
     [ObservableProperty] private string _currentDisplayName = string.Empty;
+    [ObservableProperty] private bool _currentUserIsAdmin;
     [ObservableProperty] private string _loginUsername = string.Empty;
     [ObservableProperty] private string _loginPassword = string.Empty;
     [ObservableProperty] private bool _rememberCredentials;
@@ -848,6 +849,12 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void OpenRegisterUserDialog()
     {
+        if (!CurrentUserIsAdmin)
+        {
+            StatusMessage = "사용자 추가는 관리자만 할 수 있습니다.";
+            return;
+        }
+
         RegisterUserErrorMessage = string.Empty;
         NewUserUsername = string.Empty;
         NewUserDisplayName = string.Empty;
@@ -924,6 +931,7 @@ public partial class MainViewModel : ViewModelBase
             UserDto currentUser = await authenticatedClient.GetCurrentUserAsync(CancellationToken.None);
             CurrentUsername = currentUser.Username;
             CurrentDisplayName = currentUser.DisplayName;
+            CurrentUserIsAdmin = currentUser.IsAdmin;
             LoginUsername = currentUser.Username;
             IsBackendConnected = true;
             IsAuthenticated = true;
@@ -965,6 +973,7 @@ public partial class MainViewModel : ViewModelBase
         RefreshToken = string.Empty;
         CurrentUsername = string.Empty;
         CurrentDisplayName = string.Empty;
+        CurrentUserIsAdmin = false;
         _activeSaveOperationCount = 0;
         _lastSavedAt = null;
         UpdateLastSaveElapsedLabel();
@@ -1025,6 +1034,12 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private async Task RegisterUserAsync()
     {
+        if (!CurrentUserIsAdmin)
+        {
+            RegisterUserErrorMessage = "사용자 추가는 관리자만 할 수 있습니다.";
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(NewUserUsername) ||
             string.IsNullOrWhiteSpace(NewUserPassword) ||
             string.IsNullOrWhiteSpace(NewUserPasswordConfirm))
@@ -1145,6 +1160,7 @@ public partial class MainViewModel : ViewModelBase
                     UserDto currentUser = await authenticatedClient.GetCurrentUserAsync(CancellationToken.None);
                     CurrentUsername = currentUser.Username;
                     CurrentDisplayName = currentUser.DisplayName;
+                    CurrentUserIsAdmin = currentUser.IsAdmin;
                     LoginUsername = currentUser.Username;
                     IsAuthenticated = true;
                 }
@@ -1155,6 +1171,7 @@ public partial class MainViewModel : ViewModelBase
                     RefreshToken = string.Empty;
                     CurrentUsername = string.Empty;
                     CurrentDisplayName = string.Empty;
+                    CurrentUserIsAdmin = false;
                     IsAuthenticated = false;
                     StatusMessage = "저장된 로그인이 만료되었습니다.";
                 }

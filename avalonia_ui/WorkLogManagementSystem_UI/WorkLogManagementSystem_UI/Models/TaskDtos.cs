@@ -228,4 +228,7 @@ public sealed class UserDto
 
     [JsonPropertyName("display_name")]
     public string DisplayName { get; set; } = string.Empty;
+
+    [JsonPropertyName("is_admin")]
+    public bool IsAdmin { get; set; }
 }

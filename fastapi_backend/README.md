@@ -119,6 +119,7 @@ openssl rand -hex 32
 | `WORKLOG_DATABASE_URL` | 컨테이너 기본값은 `sqlite:////app/data/worklog.sqlite3` |
 
 `.env` 파일은 이미지에 포함되지 않으며 저장소에도 커밋하지 않아야 합니다.
+사용자 추가는 로그인한 기본 관리자에게만 허용됩니다.
 
 ## 로컬 Docker 실행
 
