@@ -727,7 +727,7 @@
               <StackPanel Spacing="8">
                 <TextBlock Classes="section-title"
                            Text="계정 관리"/>
-                <Grid ColumnDefinitions="*,*"
+                <Grid ColumnDefinitions="*,Auto"
                       ColumnSpacing="8">
                   <Button Grid.Column="0"
                           Classes="fit"
@@ -746,6 +746,7 @@
                          IsVisible="{Binding HasSettingsErrorMessage}"/>
             </StackPanel>
           </ScrollViewer>
+                          IsVisible="{Binding CurrentUserIsAdmin}"
 
           <Grid Grid.Row="2"
                 ColumnDefinitions="Auto,*">

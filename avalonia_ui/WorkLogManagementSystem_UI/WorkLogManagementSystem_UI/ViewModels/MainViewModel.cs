@@ -72,6 +72,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string _editorTitle = string.Empty;
     [ObservableProperty] private string _editorDisplayTitle = string.Empty;
     [ObservableProperty] private string _editorContent = string.Empty;
+    [ObservableProperty] private bool _currentUserIsAdmin;
     [ObservableProperty] private string _editorPerformedContent = string.Empty;
     [ObservableProperty] private string _editorDailyRetrospective = string.Empty;
     [ObservableProperty] private decimal _editorPriority;
@@ -969,6 +970,12 @@ public partial class MainViewModel : ViewModelBase
         _lastSavedAt = null;
         UpdateLastSaveElapsedLabel();
         IsAuthenticated = false;
+        if (!CurrentUserIsAdmin)
+        {
+            StatusMessage = "사용자 추가는 관리자만 할 수 있습니다.";
+            return;
+        }
+
         Tasks = new ObservableCollection<TaskDto>();
         IsSettingsDialogOpen = false;
         IsChangePasswordDialogOpen = false;
@@ -1045,6 +1052,7 @@ public partial class MainViewModel : ViewModelBase
             UserDto user = await client.RegisterAsync(
                 new RegisterRequest
                 {
+            CurrentUserIsAdmin = currentUser.IsAdmin;
                     Username = NewUserUsername.Trim(),
                     Password = NewUserPassword,
                     DisplayName = string.IsNullOrWhiteSpace(NewUserDisplayName)
@@ -1086,6 +1094,7 @@ public partial class MainViewModel : ViewModelBase
             bool apiBaseUrlChanged = ApiBaseUrl != apiBaseUrl;
             ApiBaseUrl = apiBaseUrl;
             ConnectionGateApiBaseUrl = apiBaseUrl;
+        CurrentUserIsAdmin = false;
             IsBackendConnected = true;
             ThemeMode = ResolveSettingsThemeMode();
             ApplyThemePreview(ThemeMode);
@@ -1147,6 +1156,12 @@ public partial class MainViewModel : ViewModelBase
                     CurrentDisplayName = currentUser.DisplayName;
                     LoginUsername = currentUser.Username;
                     IsAuthenticated = true;
+        if (!CurrentUserIsAdmin)
+        {
+            RegisterUserErrorMessage = "사용자 추가는 관리자만 할 수 있습니다.";
+            return;
+        }
+
                 }
                 catch (Exception error)
                 {
@@ -1267,6 +1282,7 @@ public partial class MainViewModel : ViewModelBase
         }
 
         if (SettingsUseDarkTheme)
+                    CurrentUserIsAdmin = currentUser.IsAdmin;
         {
             return AppThemeMode.Dark;
         }
@@ -1277,6 +1293,7 @@ public partial class MainViewModel : ViewModelBase
     private void ApplyThemePreview(string themeMode)
     {
         ActiveThemeVariant = ToThemeVariant(themeMode);
+                    CurrentUserIsAdmin = false;
         _settingsService.ApplyThemeMode(themeMode);
     }
 
