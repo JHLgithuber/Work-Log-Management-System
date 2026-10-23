@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
-from fastapi.staticfiles import StaticFiles
+from app.web_hosting import WebStaticMount
 
 from app.auth_routes import AuthRouter
 from app.database import Database
@@ -43,11 +43,11 @@ async def health_check() -> Response:
 
 
 if (web_root / "index.html").is_file():
-    app.mount("/", StaticFiles(directory=web_root, html=True), name="web")
+    app.router.routes.append(WebStaticMount(web_root, tuple(app.routes)))
 else:
     @app.get("/", include_in_schema=False, response_class=PlainTextResponse)
     async def frontend_not_built() -> PlainTextResponse:
         return PlainTextResponse(
-            "Avalonia browser UI has not been built. Run: sh fastapi_backend/build-web.sh",
+            "Avalonia browser UI has not been built. Build the repository-root Dockerfile or run: sh fastapi_backend/build-web.sh",
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
