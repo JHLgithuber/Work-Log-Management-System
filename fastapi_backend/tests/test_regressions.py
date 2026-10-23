@@ -46,6 +46,16 @@ def test_whitespace_only_title_is_rejected(client, user_headers, task_payload, m
         assert client.get(path, headers=user_headers).json() == []
 
 
+@pytest.mark.parametrize("endpoint", ["/tasks", "/auth/me"])
+@pytest.mark.parametrize("token", ["x.y.a", "x.y.é"])
+def test_malformed_bearer_token_is_unauthorized_not_server_error(client, endpoint, token):
+    # An invalid base64 signature must be a normal unauthorized response.
+    # HTTP headers are latin-1, so the second case is a non-ASCII latin-1 byte.
+    response = client.get(endpoint, headers={"Authorization": f"Bearer {token}".encode("latin-1")})
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+
+
 def test_restart_preserves_account_without_tasks(database, user_headers, client):
     database.initialize()
     database.initialize()
@@ -73,3 +83,23 @@ def test_legacy_user_conversion_runs_once(database, client, user_headers, task_p
     auth.register("qa-after-migration", "synthetic-after-migration-password")
     database.initialize()
     assert auth.authenticate("qa-after-migration", "synthetic-after-migration-password").username == "qa-after-migration"
+
+
+@pytest.mark.parametrize(
+    "header,payload",
+    [
+        (b"[]", b'{}'),
+        (b'{"alg":"HS256","typ":"JWT"}', b'[]'),
+        (b'{"alg":"HS256","typ":"JWT"}', b'not-json'),
+        (b'{"alg":"HS256","typ":"JWT"}', b'\xff'),
+    ],
+)
+def test_signed_invalid_token_payload_is_unauthorized(client, header, payload):
+    def encode(value):
+        return base64.urlsafe_b64encode(value).rstrip(b"=")
+
+    message = encode(header) + b"." + encode(payload)
+    signature = hmac.new(b"synthetic-test-key-not-for-production", message, hashlib.sha256).digest()
+    token = (message + b"." + encode(signature)).decode()
+    response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 401
