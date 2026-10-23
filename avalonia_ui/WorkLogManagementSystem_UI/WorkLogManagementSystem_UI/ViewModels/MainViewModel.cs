@@ -20,6 +20,7 @@ public partial class MainViewModel : ViewModelBase
     {
         None,
         SelectTask,
+        SelectDate,
         NewRootTask,
         NewChildTask,
         Logout,
@@ -43,15 +44,28 @@ public partial class MainViewModel : ViewModelBase
     private DateTimeOffset? _lastSavedAt;
     private TaskDto? _activeEditorTask;
     private TaskDto? _pendingTaskSelection;
+    private DateTime? _pendingSelectedDate;
     private PendingEditorAction _pendingEditorAction;
     private int? _pendingParentTaskId;
     private string _pendingParentTaskTitle = string.Empty;
     private bool _isApplyingTaskSelection;
+    private bool _suppressSelectedDateChange;
     private bool _suppressEditorDirtyTracking;
+    private bool _suppressDailyNoteDirtyTracking;
     private bool _isHeartbeatCheckRunning;
     private bool _heartbeatFailureNotified;
     private int _activeSaveOperationCount;
     private int _dailyNoteOperationVersion;
+    private string _dailyNoteBaseline = string.Empty;
+    private string _editorTitleBaseline = string.Empty;
+    private string _editorContentBaseline = string.Empty;
+    private string _editorPerformedContentBaseline = string.Empty;
+    private string _editorDailyRetrospectiveBaseline = string.Empty;
+    private decimal _editorPriorityBaseline;
+    private int? _editorParentIdBaseline;
+    private DateTime? _editorStartDateBaseline;
+    private DateTime? _editorDueDateBaseline;
+    private DateTime? _editorActualEndDateBaseline;
 
     [ObservableProperty] private string _apiBaseUrl = AppDefaultsService.Load().ApiBaseUrl;
     [ObservableProperty] private string _accessToken = string.Empty;
@@ -94,6 +108,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string _settingsNewPasswordConfirm = string.Empty;
     [ObservableProperty] private bool _isRegisterUserDialogOpen;
     [ObservableProperty] private bool _isDeleteTaskConfirmationOpen;
+    [ObservableProperty] private bool _isDeleteDateEntryConfirmationOpen;
     [ObservableProperty] private bool _isUnsavedChangesDialogOpen;
     [ObservableProperty] private string _registerUserErrorMessage = string.Empty;
     [ObservableProperty] private string _newUserUsername = string.Empty;
@@ -120,6 +135,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string _dailyNoteContent = string.Empty;
     [ObservableProperty] private string _lastSaveElapsedLabel = "마지막 저장 없음";
     [ObservableProperty] private bool _hasUnsavedTaskChanges;
+    [ObservableProperty] private bool _hasUnsavedDailyNoteChanges;
 
     public event EventHandler? CloseWindowRequested;
 
@@ -199,11 +215,39 @@ public partial class MainViewModel : ViewModelBase
     public string CredentialSaveUnsupportedReason => _credentialStore.UnsupportedReason;
     public bool CanEditDailyNote => SelectedDate is not null && IsBackendConnected && IsAuthenticated && !IsDailyNoteBusy;
 
-    partial void OnSelectedDateChanged(DateTime? value)
+    partial void OnSelectedDateChanged(DateTime? oldValue, DateTime? newValue)
     {
         OnPropertyChanged(nameof(CurrentScopeLabel));
         OnPropertyChanged(nameof(CanEditDailyNote));
         OnPropertyChanged(nameof(CanDeleteSelectedDateEntry));
+
+        if (_suppressSelectedDateChange)
+        {
+            return;
+        }
+
+        if (HasUnsavedTaskChanges || HasUnsavedDailyNoteChanges)
+        {
+            _pendingSelectedDate = newValue;
+            _suppressSelectedDateChange = true;
+            try
+            {
+                SelectedDate = oldValue;
+            }
+            finally
+            {
+                _suppressSelectedDateChange = false;
+            }
+
+            PreparePendingEditorAction(PendingEditorAction.SelectDate);
+            return;
+        }
+
+        BeginSelectedDateChange();
+    }
+
+    private void BeginSelectedDateChange()
+    {
         _ = LoadTasksAsync();
         _ = LoadDailyNoteAsync();
         LoadSelectedTaskEntry();
@@ -302,6 +346,14 @@ public partial class MainViewModel : ViewModelBase
     partial void OnEditorDueDateChanged(DateTime? value) => MarkEditorDirty();
     partial void OnEditorActualEndDateChanged(DateTime? value) => MarkEditorDirty();
 
+    partial void OnDailyNoteContentChanged(string value)
+    {
+        if (!_suppressDailyNoteDirtyTracking)
+        {
+            HasUnsavedDailyNoteChanges = value != _dailyNoteBaseline;
+        }
+    }
+
     partial void OnEditorParentTitleChanged(string value)
     {
         OnPropertyChanged(nameof(EditorParentTitleLabel));
@@ -340,7 +392,7 @@ public partial class MainViewModel : ViewModelBase
         }
         else
         {
-            DailyNoteContent = string.Empty;
+            SetDailyNoteContentFromServer(string.Empty);
         }
     }
 
@@ -415,15 +467,36 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             CaptureExpansionState(Tasks);
+            int? focusedTaskId = SelectedTask?.Id ?? _activeEditorTask?.Id;
             using WorkLogApiClient client = CreateAuthenticatedClient();
-            IReadOnlyList<TaskDto> loadedTasks = await client.GetTasksAsync(SelectedDate.Value, cancellationToken);
+            IReadOnlyList<TaskDto> loadedTasks = await client.GetTasksAsync(
+                SelectedDate.Value,
+                focusedTaskId,
+                cancellationToken);
             ApplyTaskDisplayState(loadedTasks, SelectedDate.Value);
-            Tasks = new ObservableCollection<TaskDto>(SortTasks(loadedTasks));
+            int? selectedTaskId = SelectedTask?.Id ?? focusedTaskId;
+            TaskDto? reloadedTask = null;
+            _isApplyingTaskSelection = true;
+            try
+            {
+                Tasks = new ObservableCollection<TaskDto>(SortTasks(loadedTasks));
+                reloadedTask = selectedTaskId is null ? null : FindTaskById(Tasks, selectedTaskId.Value);
+                SelectedTask = reloadedTask;
+            }
+            finally
+            {
+                _isApplyingTaskSelection = false;
+            }
+
             StatusMessage = $"{loadedTasks.Count}개 과업을 불러왔습니다.";
 
-            if (SelectedTask is not null && FindTaskById(Tasks, SelectedTask.Id) is TaskDto reloaded)
+            if (reloadedTask is not null)
             {
-                SelectedTask = reloaded;
+                _activeEditorTask = reloadedTask;
+                if (!IsNewTask && !HasUnsavedTaskChanges)
+                {
+                    BeginEdit(reloadedTask);
+                }
             }
             else if (!IsNewTask)
             {
@@ -444,7 +517,7 @@ public partial class MainViewModel : ViewModelBase
     {
         if (SelectedDate is null || !IsBackendConnected || !IsAuthenticated)
         {
-            DailyNoteContent = string.Empty;
+            SetDailyNoteContentFromServer(string.Empty);
             return;
         }
 
@@ -453,7 +526,7 @@ public partial class MainViewModel : ViewModelBase
         _dailyNoteCancellationTokenSource = new CancellationTokenSource();
         CancellationToken cancellationToken = _dailyNoteCancellationTokenSource.Token;
         int operationVersion = ++_dailyNoteOperationVersion;
-        DailyNoteContent = string.Empty;
+        SetDailyNoteContentFromServer(string.Empty);
         IsDailyNoteBusy = true;
 
         try
@@ -462,7 +535,7 @@ public partial class MainViewModel : ViewModelBase
             DailyNoteDto note = await client.GetDailyNoteAsync(requestedDate, cancellationToken);
             if (operationVersion == _dailyNoteOperationVersion && SelectedDate?.Date == requestedDate)
             {
-                DailyNoteContent = note.Content;
+                SetDailyNoteContentFromServer(note.Content);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -472,7 +545,7 @@ public partial class MainViewModel : ViewModelBase
         {
             if (operationVersion == _dailyNoteOperationVersion && SelectedDate?.Date == requestedDate)
             {
-                DailyNoteContent = string.Empty;
+                SetDailyNoteContentFromServer(string.Empty);
                 StatusMessage = $"비고 로드 실패: {error.Message}";
                 ShowServerCommunicationFailure(error, "비고 로드 실패");
             }
@@ -489,9 +562,14 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private async Task SaveDailyNoteAsync()
     {
+        await SaveDailyNoteCoreAsync();
+    }
+
+    private async Task<bool> SaveDailyNoteCoreAsync()
+    {
         if (!CanEditDailyNote || SelectedDate is null)
         {
-            return;
+            return false;
         }
 
         DateTime noteDate = SelectedDate.Value.Date;
@@ -508,10 +586,11 @@ public partial class MainViewModel : ViewModelBase
                 CancellationToken.None);
             if (operationVersion == _dailyNoteOperationVersion && SelectedDate?.Date == noteDate)
             {
-                DailyNoteContent = saved.Content;
+                SetDailyNoteContentFromServer(saved.Content);
                 StatusMessage = $"{noteDate:yyyy-MM-dd} 비고를 저장했습니다.";
             }
             MarkSaved();
+            return true;
         }
         catch (Exception error)
         {
@@ -521,6 +600,7 @@ public partial class MainViewModel : ViewModelBase
                 StatusMessage = $"비고 저장 실패: {error.Message}";
             }
             ShowServerCommunicationFailure(error, "비고 저장 실패");
+            return false;
         }
         finally
         {
@@ -607,11 +687,17 @@ public partial class MainViewModel : ViewModelBase
         {
             TaskWriteRequest request = BuildWriteRequest();
             using WorkLogApiClient client = CreateAuthenticatedClient();
-            TaskDto savedTask = IsNewTask || SelectedTask is null
+            bool wasNewTask = IsNewTask || SelectedTask is null;
+            TaskDto savedTask = wasNewTask
                 ? await client.CreateTaskAsync(request, CancellationToken.None)
-                : await client.UpdateTaskAsync(SelectedTask.Id, request, CancellationToken.None);
+                : await client.UpdateTaskAsync(SelectedTask!.Id, request, CancellationToken.None);
 
             IsNewTask = false;
+            if (wasNewTask)
+            {
+                SetSelectedTaskWithoutPrompt(savedTask);
+                _activeEditorTask = savedTask;
+            }
             if (SelectedDate is not null)
             {
                 await client.SaveWorkEntryAsync(
@@ -627,6 +713,7 @@ public partial class MainViewModel : ViewModelBase
 
             HasUnsavedTaskChanges = false;
             EditorDisplayTitle = savedTask.Title;
+            CaptureEditorBaseline();
             MarkSaved();
             saveStateCompleted = true;
             await LoadTasksAsync();
@@ -656,7 +743,23 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void DiscardUnsavedChanges()
     {
+        if (HasUnsavedTaskChanges)
+        {
+            if (IsNewTask || _activeEditorTask is null)
+            {
+                ClearEditor();
+            }
+            else
+            {
+                BeginEdit(_activeEditorTask);
+            }
+        }
+
         HasUnsavedTaskChanges = false;
+        if (PendingActionIncludesDailyNote())
+        {
+            SetDailyNoteContentFromServer(_dailyNoteBaseline);
+        }
         IsUnsavedChangesDialogOpen = false;
         ExecutePendingEditorAction();
     }
@@ -664,7 +767,14 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private async Task SaveUnsavedChangesAsync()
     {
-        if (!await SaveTaskCoreAsync())
+        if (HasUnsavedTaskChanges && !await SaveTaskCoreAsync())
+        {
+            return;
+        }
+
+        if (PendingActionIncludesDailyNote() &&
+            HasUnsavedDailyNoteChanges &&
+            !await SaveDailyNoteCoreAsync())
         {
             return;
         }
@@ -675,7 +785,7 @@ public partial class MainViewModel : ViewModelBase
 
     public void RequestCloseWithUnsavedChanges()
     {
-        if (!HasUnsavedTaskChanges)
+        if (!HasUnsavedTaskChanges && !HasUnsavedDailyNoteChanges)
         {
             CloseWindowRequested?.Invoke(this, EventArgs.Empty);
             return;
@@ -685,10 +795,26 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task DeleteSelectedDateEntryAsync()
+    private void RequestDeleteSelectedDateEntry()
+    {
+        if (CanDeleteSelectedDateEntry)
+        {
+            IsDeleteDateEntryConfirmationOpen = true;
+        }
+    }
+
+    [RelayCommand]
+    private void CancelDeleteSelectedDateEntry()
+    {
+        IsDeleteDateEntryConfirmationOpen = false;
+    }
+
+    [RelayCommand]
+    private async Task ConfirmDeleteSelectedDateEntryAsync()
     {
         if (!CanDeleteSelectedDateEntry || SelectedTask is null || SelectedDate is null)
         {
+            IsDeleteDateEntryConfirmationOpen = false;
             return;
         }
 
@@ -696,23 +822,18 @@ public partial class MainViewModel : ViewModelBase
         DateTime entryDate = SelectedDate.Value.Date;
         try
         {
+            IsDeleteDateEntryConfirmationOpen = false;
             using WorkLogApiClient client = CreateAuthenticatedClient();
-            await client.SaveWorkEntryAsync(
-                taskId,
-                entryDate,
-                new WorkEntryWriteRequest
-                {
-                    PerformedContent = string.Empty,
-                    Retrospective = string.Empty
-                },
-                CancellationToken.None);
+            await client.DeleteWorkEntryAsync(taskId, entryDate, CancellationToken.None);
 
             UpdateEditorWithoutDirtyTracking(() =>
             {
                 EditorPerformedContent = string.Empty;
                 EditorDailyRetrospective = string.Empty;
             });
-            HasUnsavedTaskChanges = false;
+            _editorPerformedContentBaseline = string.Empty;
+            _editorDailyRetrospectiveBaseline = string.Empty;
+            RecomputeEditorDirtyState();
             await LoadTasksAsync();
             SelectedTask = FindTaskById(Tasks, taskId);
             StatusMessage = $"{entryDate:yyyy-MM-dd}의 수행내용과 회고를 삭제했습니다.";
@@ -958,7 +1079,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private async Task LogoutAsync()
     {
-        if (HasUnsavedTaskChanges)
+        if (HasUnsavedTaskChanges || HasUnsavedDailyNoteChanges)
         {
             PreparePendingEditorAction(PendingEditorAction.Logout);
             return;
@@ -983,6 +1104,7 @@ public partial class MainViewModel : ViewModelBase
         IsChangePasswordDialogOpen = false;
         IsRegisterUserDialogOpen = false;
         HasUnsavedTaskChanges = false;
+        HasUnsavedDailyNoteChanges = false;
         ClearEditor();
         ClearSettingsAccountFields();
         StatusMessage = "로그아웃됨.";
@@ -1375,6 +1497,7 @@ public partial class MainViewModel : ViewModelBase
             EditorDueDate = SelectedDate ?? DateTime.Today;
             EditorActualEndDate = null;
         });
+        CaptureEditorBaseline();
         HasUnsavedTaskChanges = false;
         StatusMessage = parentId is null ? "새 최상위 과업을 작성 중입니다." : $"#{parentId}의 하위 과업을 작성 중입니다.";
         OnPropertyChanged(nameof(EditorModeLabel));
@@ -1398,6 +1521,7 @@ public partial class MainViewModel : ViewModelBase
             EditorActualEndDate = task.ActualEndAt is null ? null : ToPickerDate(task.ActualEndAt.Value);
             LoadSelectedTaskEntry();
         });
+        CaptureEditorBaseline();
         HasUnsavedTaskChanges = false;
         OnPropertyChanged(nameof(EditorModeLabel));
         OnPropertyChanged(nameof(CanEditExistingTask));
@@ -1421,6 +1545,7 @@ public partial class MainViewModel : ViewModelBase
             EditorPriority = 0;
             EditorActualEndDate = null;
         });
+        CaptureEditorBaseline();
         HasUnsavedTaskChanges = false;
         OnPropertyChanged(nameof(EditorModeLabel));
         OnPropertyChanged(nameof(CanEditExistingTask));
@@ -1464,7 +1589,49 @@ public partial class MainViewModel : ViewModelBase
     {
         if (!_suppressEditorDirtyTracking && IsEditorEnabled)
         {
-            HasUnsavedTaskChanges = true;
+            RecomputeEditorDirtyState();
+        }
+    }
+
+    private void RecomputeEditorDirtyState()
+    {
+        HasUnsavedTaskChanges = IsEditorEnabled &&
+            (EditorTitle != _editorTitleBaseline ||
+             EditorContent != _editorContentBaseline ||
+             EditorPerformedContent != _editorPerformedContentBaseline ||
+             EditorDailyRetrospective != _editorDailyRetrospectiveBaseline ||
+             EditorPriority != _editorPriorityBaseline ||
+             EditorParentId != _editorParentIdBaseline ||
+             EditorStartDate?.Date != _editorStartDateBaseline?.Date ||
+             EditorDueDate?.Date != _editorDueDateBaseline?.Date ||
+             EditorActualEndDate?.Date != _editorActualEndDateBaseline?.Date);
+    }
+
+    private void CaptureEditorBaseline()
+    {
+        _editorTitleBaseline = EditorTitle;
+        _editorContentBaseline = EditorContent;
+        _editorPerformedContentBaseline = EditorPerformedContent;
+        _editorDailyRetrospectiveBaseline = EditorDailyRetrospective;
+        _editorPriorityBaseline = EditorPriority;
+        _editorParentIdBaseline = EditorParentId;
+        _editorStartDateBaseline = EditorStartDate;
+        _editorDueDateBaseline = EditorDueDate;
+        _editorActualEndDateBaseline = EditorActualEndDate;
+    }
+
+    private void SetDailyNoteContentFromServer(string content)
+    {
+        _suppressDailyNoteDirtyTracking = true;
+        try
+        {
+            DailyNoteContent = content;
+            _dailyNoteBaseline = content;
+            HasUnsavedDailyNoteChanges = false;
+        }
+        finally
+        {
+            _suppressDailyNoteDirtyTracking = false;
         }
     }
 
@@ -1484,6 +1651,7 @@ public partial class MainViewModel : ViewModelBase
 
     private void SetSelectedTaskWithoutPrompt(TaskDto? task)
     {
+        bool wasApplyingTaskSelection = _isApplyingTaskSelection;
         _isApplyingTaskSelection = true;
         try
         {
@@ -1491,7 +1659,7 @@ public partial class MainViewModel : ViewModelBase
         }
         finally
         {
-            _isApplyingTaskSelection = false;
+            _isApplyingTaskSelection = wasApplyingTaskSelection;
         }
     }
 
@@ -1519,13 +1687,25 @@ public partial class MainViewModel : ViewModelBase
         {
             _pendingTaskSelection = null;
         }
+        if (action != PendingEditorAction.SelectDate)
+        {
+            _pendingSelectedDate = null;
+        }
         IsUnsavedChangesDialogOpen = true;
+    }
+
+    private bool PendingActionIncludesDailyNote()
+    {
+        return _pendingEditorAction is PendingEditorAction.SelectDate
+            or PendingEditorAction.Logout
+            or PendingEditorAction.CloseWindow;
     }
 
     private void ClearPendingEditorAction()
     {
         _pendingEditorAction = PendingEditorAction.None;
         _pendingTaskSelection = null;
+        _pendingSelectedDate = null;
         _pendingParentTaskId = null;
         _pendingParentTaskTitle = string.Empty;
     }
@@ -1534,6 +1714,7 @@ public partial class MainViewModel : ViewModelBase
     {
         PendingEditorAction action = _pendingEditorAction;
         TaskDto? task = _pendingTaskSelection;
+        DateTime? selectedDate = _pendingSelectedDate;
         int? parentId = _pendingParentTaskId;
         string parentTitle = _pendingParentTaskTitle;
         ClearPendingEditorAction();
@@ -1542,6 +1723,9 @@ public partial class MainViewModel : ViewModelBase
         {
             case PendingEditorAction.SelectTask:
                 ApplyTaskSelection(task is null ? null : FindTaskById(Tasks, task.Id) ?? task);
+                break;
+            case PendingEditorAction.SelectDate:
+                SelectedDate = selectedDate;
                 break;
             case PendingEditorAction.NewRootTask:
                 BeginNewTaskCore(null, string.Empty);
@@ -1774,6 +1958,9 @@ public partial class MainViewModel : ViewModelBase
     private void LoadSelectedTaskEntry()
     {
         UpdateEditorWithoutDirtyTracking(LoadSelectedTaskEntryCore);
+        _editorPerformedContentBaseline = EditorPerformedContent;
+        _editorDailyRetrospectiveBaseline = EditorDailyRetrospective;
+        RecomputeEditorDirtyState();
     }
 
     private void LoadSelectedTaskEntryCore()

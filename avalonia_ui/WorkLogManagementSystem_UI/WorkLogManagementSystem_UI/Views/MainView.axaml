@@ -546,7 +546,7 @@
                         Content="당일 내용 삭제"
                         ToolTip.Tip="선택한 날짜의 수행내용과 회고만 삭제합니다."
                         IsEnabled="{Binding CanDeleteSelectedDateEntry}"
-                        Command="{Binding DeleteSelectedDateEntryCommand}"/>
+                        Command="{Binding RequestDeleteSelectedDateEntryCommand}"/>
                 <Button Grid.Column="1"
                         Content="과업 삭제"
                         Classes="danger-outline fit"
@@ -870,6 +870,34 @@
             <Button Classes="primary"
                     Content="추가"
                     Command="{Binding RegisterUserCommand}"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
+
+    <Border Grid.RowSpan="2"
+            Classes="modal-scrim"
+            ZIndex="24"
+            IsVisible="{Binding IsDeleteDateEntryConfirmationOpen}">
+      <Border x:Name="DeleteDateEntryConfirmationModalCard"
+              Classes="modal-card"
+              MaxWidth="520">
+        <StackPanel Spacing="16">
+          <TextBlock Text="당일 기록 삭제"
+                     FontSize="20"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource AppTextPrimaryBrush}"/>
+          <TextBlock Text="선택한 날짜의 수행내용과 회고를 삭제하시겠습니까? 과업 자체와 다른 날짜의 기록은 유지됩니다."
+                     Foreground="{DynamicResource AppTextPrimaryBrush}"
+                     TextWrapping="Wrap"/>
+          <StackPanel Orientation="Horizontal"
+                      HorizontalAlignment="Right"
+                      Spacing="8">
+            <Button Content="취소"
+                    Command="{Binding CancelDeleteSelectedDateEntryCommand}"/>
+            <Button Classes="danger"
+                    Content="당일 기록 삭제"
+                    Command="{Binding ConfirmDeleteSelectedDateEntryCommand}"/>
           </StackPanel>
         </StackPanel>
       </Border>

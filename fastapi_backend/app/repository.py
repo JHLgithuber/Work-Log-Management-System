@@ -91,7 +91,13 @@ class TaskRepository:
                 raise TaskNotFoundError(f"Task {task_id} was not found.")
             return task
 
-    async def list_for_date(self, username: str, target_start: datetime, target_end: datetime) -> list[Task]:
+    async def list_for_date(
+        self,
+        username: str,
+        target_start: datetime,
+        target_end: datetime,
+        focused_task_id: int | None = None,
+    ) -> list[Task]:
         async with self._database.session() as session:
             user_id: int | None = await self._resolve_user_id(session, username)
             tasks: list[Task] = await self._load_task_graph(session, user_id)
@@ -101,6 +107,9 @@ class TaskRepository:
                 for task in tasks
                 if task.start_at <= target_end and (task.actual_end_at or task.due_at) >= target_start
             }
+            focused_task = tasks_by_id.get(focused_task_id) if focused_task_id is not None else None
+            if focused_task is not None:
+                root_ids.add(self._root_id_from_loaded_graph(tasks_by_id, focused_task))
             return [
                 task
                 for task in tasks

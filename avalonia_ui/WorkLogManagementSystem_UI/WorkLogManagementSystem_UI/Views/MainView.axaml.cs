@@ -390,8 +390,8 @@ public partial class MainView : UserControl
             textBox.CommitPendingComposition();
         }
 
-        if (_allowHostWindowClose ||
-            DataContext is not MainViewModel { HasUnsavedTaskChanges: true } viewModel)
+        if (_allowHostWindowClose || DataContext is not MainViewModel viewModel ||
+            (!viewModel.HasUnsavedTaskChanges && !viewModel.HasUnsavedDailyNoteChanges))
         {
             return;
         }
