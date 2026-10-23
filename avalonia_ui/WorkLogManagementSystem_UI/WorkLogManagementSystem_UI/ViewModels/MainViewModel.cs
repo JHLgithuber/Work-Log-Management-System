@@ -30,7 +30,6 @@ public partial class MainViewModel : ViewModelBase
     private static readonly DateTime UnboundedStart = DateTime.MinValue;
     private static readonly DateTime UnboundedEnd = DateTime.MaxValue;
     private readonly HashSet<int> _expandedTaskIds = new();
-    private static readonly TimeSpan BackendTimezoneOffset = TimeSpan.FromHours(9);
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan HeartbeatRequestTimeout = TimeSpan.FromSeconds(3);
     private static readonly CultureInfo KoreanCulture = CultureInfo.GetCultureInfo("ko-KR");
@@ -90,7 +89,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private bool _rememberCredentials;
     [ObservableProperty] private string _themeMode = AppThemeMode.System;
     [ObservableProperty] private ThemeVariant _activeThemeVariant = ThemeVariant.Default;
-    [ObservableProperty] private DateTime? _selectedDate = DateTime.Today;
+    [ObservableProperty] private DateTime? _selectedDate = WorkLogCalendar.Today;
     [ObservableProperty] private ObservableCollection<TaskDto> _tasks = new();
     [ObservableProperty] private TaskDto? _selectedTask;
     [ObservableProperty] private bool _isEditorEnabled;
@@ -104,8 +103,8 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private decimal _editorPriority;
     [ObservableProperty] private int? _editorParentId;
     [ObservableProperty] private string _editorParentTitle = string.Empty;
-    [ObservableProperty] private DateTime? _editorStartDate = DateTime.Today;
-    [ObservableProperty] private DateTime? _editorDueDate = DateTime.Today;
+    [ObservableProperty] private DateTime? _editorStartDate = WorkLogCalendar.Today;
+    [ObservableProperty] private DateTime? _editorDueDate = WorkLogCalendar.Today;
     [ObservableProperty] private DateTime? _editorActualEndDate;
     [ObservableProperty] private bool _isSettingsDialogOpen;
     [ObservableProperty] private string _settingsApiBaseUrl = string.Empty;
@@ -138,8 +137,8 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string _connectionGateErrorMessage = string.Empty;
     [ObservableProperty] private string _connectionGateStatusMessage = string.Empty;
     [ObservableProperty] private bool _isExportRangeDialogOpen;
-    [ObservableProperty] private DateTime? _exportStartDate = DateTime.Today;
-    [ObservableProperty] private DateTime? _exportEndDate = DateTime.Today;
+    [ObservableProperty] private DateTime? _exportStartDate = WorkLogCalendar.Today;
+    [ObservableProperty] private DateTime? _exportEndDate = WorkLogCalendar.Today;
     [ObservableProperty] private string _exportRangeErrorMessage = string.Empty;
     [ObservableProperty] private bool _isAuthenticated;
     [ObservableProperty] private bool _isDailyNoteExpanded;
@@ -742,19 +741,19 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void MovePreviousDay()
     {
-        SelectedDate = (SelectedDate ?? DateTime.Today).AddDays(-1);
+        SelectedDate = (SelectedDate ?? WorkLogCalendar.Today).AddDays(-1);
     }
 
     [RelayCommand]
     private void MoveNextDay()
     {
-        SelectedDate = (SelectedDate ?? DateTime.Today).AddDays(1);
+        SelectedDate = (SelectedDate ?? WorkLogCalendar.Today).AddDays(1);
     }
 
     [RelayCommand]
     private void MoveToday()
     {
-        SelectedDate = DateTime.Today;
+        SelectedDate = WorkLogCalendar.Today;
     }
 
     [RelayCommand]
@@ -1036,7 +1035,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void SetStartToday()
     {
-        EditorStartDate = DateTime.Today;
+        EditorStartDate = WorkLogCalendar.Today;
     }
 
     [RelayCommand]
@@ -1048,13 +1047,13 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void SetDueToday()
     {
-        EditorDueDate = DateTime.Today;
+        EditorDueDate = WorkLogCalendar.Today;
     }
 
     [RelayCommand]
     private void SetActualEndToday()
     {
-        EditorActualEndDate = DateTime.Today;
+        EditorActualEndDate = WorkLogCalendar.Today;
     }
 
     [RelayCommand]
@@ -1469,7 +1468,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private async Task ExportExcelAsync()
     {
-        DateTime defaultDate = SelectedDate ?? DateTime.Today;
+        DateTime defaultDate = SelectedDate ?? WorkLogCalendar.Today;
         DateTime defaultStartDate = new(defaultDate.Year, defaultDate.Month, 1);
         DateTime defaultEndDate = new(
             defaultDate.Year,
@@ -1632,8 +1631,8 @@ public partial class MainViewModel : ViewModelBase
             EditorPerformedContent = string.Empty;
             EditorDailyRetrospective = string.Empty;
             EditorPriority = 0;
-            EditorStartDate = SelectedDate ?? DateTime.Today;
-            EditorDueDate = SelectedDate ?? DateTime.Today;
+            EditorStartDate = SelectedDate ?? WorkLogCalendar.Today;
+            EditorDueDate = SelectedDate ?? WorkLogCalendar.Today;
             EditorActualEndDate = null;
         });
         CaptureEditorBaseline();
@@ -1656,9 +1655,9 @@ public partial class MainViewModel : ViewModelBase
             EditorDisplayTitle = task.Title;
             EditorContent = task.Content;
             EditorPriority = task.Priority;
-            EditorStartDate = ToPickerDate(task.StartAt);
-            EditorDueDate = ToPickerDate(task.DueAt);
-            EditorActualEndDate = task.ActualEndAt is null ? null : ToPickerDate(task.ActualEndAt.Value);
+            EditorStartDate = WorkLogCalendar.ToDate(task.StartAt);
+            EditorDueDate = WorkLogCalendar.ToDate(task.DueAt);
+            EditorActualEndDate = task.ActualEndAt is null ? null : WorkLogCalendar.ToDate(task.ActualEndAt.Value);
             LoadSelectedTaskEntry();
         });
         CaptureEditorBaseline();
@@ -1694,8 +1693,8 @@ public partial class MainViewModel : ViewModelBase
 
     private TaskWriteRequest BuildWriteRequest()
     {
-        DateTimeOffset start = ToRequestDateTimeOffset(EditorStartDate, DateTimeOffset.Now);
-        DateTimeOffset due = ToRequestDateTimeOffset(EditorDueDate, DateTimeOffset.Now);
+        DateTimeOffset start = WorkLogCalendar.ToRequestDate(EditorStartDate);
+        DateTimeOffset due = WorkLogCalendar.ToRequestDate(EditorDueDate);
         return new TaskWriteRequest
         {
             ParentId = EditorParentId,
@@ -1706,7 +1705,7 @@ public partial class MainViewModel : ViewModelBase
             DueAt = due.ToUniversalTime(),
             ActualEndAt = EditorActualEndDate is null
                 ? null
-                : ToRequestDateTimeOffset(EditorActualEndDate, DateTimeOffset.Now).ToUniversalTime()
+                : WorkLogCalendar.ToRequestDate(EditorActualEndDate).ToUniversalTime()
         };
     }
 
@@ -2205,39 +2204,4 @@ public partial class MainViewModel : ViewModelBase
         return FindTaskById(Tasks, parentId.Value)?.Title ?? string.Empty;
     }
 
-    private static DateTime ToPickerDate(DateTimeOffset value)
-    {
-        if (value.Year <= 1)
-        {
-            return DateTime.MinValue;
-        }
-
-        if (value.Year >= 9999)
-        {
-            return DateTime.MaxValue;
-        }
-
-        return value.ToLocalTime().Date;
-    }
-
-    private static DateTimeOffset ToRequestDateTimeOffset(DateTime? value, DateTimeOffset fallback)
-    {
-        if (value is null)
-        {
-            return fallback;
-        }
-
-        DateTime date = value.Value.Date;
-        if (date.Year <= 1)
-        {
-            return DateTimeOffset.MinValue;
-        }
-
-        if (date.Year >= 9999)
-        {
-            return new DateTimeOffset(9999, 12, 31, 23, 59, 59, BackendTimezoneOffset);
-        }
-
-        return new DateTimeOffset(DateTime.SpecifyKind(date, DateTimeKind.Local));
-    }
 }

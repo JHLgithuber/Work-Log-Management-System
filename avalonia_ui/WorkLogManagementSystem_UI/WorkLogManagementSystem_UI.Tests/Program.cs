@@ -15,6 +15,8 @@ var cases = new (string Name, Func<Task> Run)[]
     ("Refresh recovers failed note loading before allowing writes", RefreshRecoversNote),
     ("Logging out invalidates an in-flight daily-note read", LogoutInvalidatesNote),
     ("Clearing and reselecting a date recovers both loaders", ReselectDate),
+    ("Task dates retain the Korean calendar day on every device timezone", TaskDatesUseKoreaCalendar),
+    ("Korean day boundaries and unbounded dates remain stable", KoreaDayBoundaries),
     ("Refresh waits for an in-flight note save", () => RefreshDuringNoteSave(false, false)),
     ("Refresh retains a failed note-save draft", () => RefreshDuringNoteSave(true, false)),
     ("Returning to a date waits for its in-flight note save", () => RefreshDuringNoteSave(false, true)),
@@ -208,6 +210,39 @@ static async Task ReselectDate()
     if (model.IsUnsavedChangesDialogOpen) model.DiscardUnsavedChangesCommand.Execute(null);
     await model.RefreshCommand.ExecuteAsync(null);
     Check(model.CanEditDailyNote && !model.IsDailyNoteBusy, "Reselected date did not recover loaders");
+}
+
+static async Task TaskDatesUseKoreaCalendar()
+{
+    string? payload = null;
+    var handler = new FakeHandler(async request =>
+    {
+        if (request.Method == HttpMethod.Put && request.RequestUri!.AbsolutePath == "/tasks/7")
+        {
+            payload = await request.Content!.ReadAsStringAsync();
+            return Json(SavedTask());
+        }
+        if (request.Method == HttpMethod.Put) return Json(new WorkEntryDto());
+        return FakeHandler.Default(request);
+    });
+    var model = Model(handler);
+    model.SelectedTask = SavedTask();
+    Check(model.EditorStartDate == new DateTime(2099, 1, 10), $"Start date shifted in {TimeZoneInfo.Local.Id}: {model.EditorStartDate}");
+    Check(model.EditorDueDate == new DateTime(2099, 1, 11), $"Due date shifted in {TimeZoneInfo.Local.Id}: {model.EditorDueDate}");
+    Check(model.SelectedTask.DateSummary == "2099-01-10 - 2099-01-11", "Task summary shifted calendar dates");
+    await model.SaveTaskCommand.ExecuteAsync(null);
+    var body = JsonDocument.Parse(payload!).RootElement;
+    Check(body.GetProperty("start_at").GetDateTimeOffset().ToOffset(TimeSpan.FromHours(9)).Date == new DateTime(2099, 1, 10), "No-op edit changed the start day");
+    Check(body.GetProperty("due_at").GetDateTimeOffset().ToOffset(TimeSpan.FromHours(9)).Date == new DateTime(2099, 1, 11), "No-op edit changed the due day");
+}
+
+static Task KoreaDayBoundaries()
+{
+    Check(WorkLogCalendar.ToDate(new DateTimeOffset(2099, 1, 10, 14, 59, 59, TimeSpan.Zero)) == new DateTime(2099, 1, 10), "Before Korean midnight changed day");
+    Check(WorkLogCalendar.ToDate(new DateTimeOffset(2099, 1, 10, 15, 0, 0, TimeSpan.Zero)) == new DateTime(2099, 1, 11), "Korean midnight did not change day");
+    Check(WorkLogCalendar.ToDate(WorkLogCalendar.ToRequestDate(DateTime.MinValue)) == DateTime.MinValue, "Unbounded start changed");
+    Check(WorkLogCalendar.ToDate(WorkLogCalendar.ToRequestDate(DateTime.MaxValue)) == DateTime.MaxValue, "Unbounded end changed");
+    return Task.CompletedTask;
 }
 
 static async Task RefreshDuringNoteSave(bool failSave, bool navigate)

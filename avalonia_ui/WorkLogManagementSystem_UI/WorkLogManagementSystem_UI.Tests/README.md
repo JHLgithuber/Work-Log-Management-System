@@ -16,7 +16,9 @@ Coverage:
 - Logout invalidates in-flight task and daily-note reads.
 - Refresh, date navigation, and task reselection cannot race pending task/note saves; failed writes retain drafts.
 - Clearing and reselecting a date recovers both loaders.
+- Displaying and resaving task dates preserves Korean calendar days regardless of the device timezone, including midnight and unbounded-date sentinels.
 
+On Linux, rerun with `TZ=UTC`, `TZ=Asia/Seoul`, `TZ=America/Los_Angeles`, and `TZ=Australia/Sydney` to cover device timezone differences.
 
 The runner does not replace browser/device interaction tests. A browser build can be checked separately:
 
