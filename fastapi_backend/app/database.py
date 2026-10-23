@@ -87,7 +87,7 @@ class Database:
         if "tasks" not in table_names:
             return
 
-        self._migrate_users_schema(connection)
+        migrated_legacy_users = self._migrate_users_schema(connection)
         column_names: set[str] = self._task_column_names(connection)
         dialect_name: str = connection.dialect.name
 
@@ -102,12 +102,16 @@ class Database:
         if dialect_name in {"mysql", "mariadb"}:
             self._ensure_mysql_task_user_constraints(connection)
 
-        self._move_single_legacy_user_tasks_to_admin(connection)
+        # Only pre-authentication schemas contain a legacy placeholder user.
+        # A current installation can also have exactly one real account;
+        # running this conversion on every startup deletes that account.
+        if migrated_legacy_users:
+            self._move_single_legacy_user_tasks_to_admin(connection)
 
     def _task_column_names(self, connection: Connection) -> set[str]:
         return {column["name"] for column in inspect(connection).get_columns("tasks")}
 
-    def _migrate_users_schema(self, connection: Connection) -> None:
+    def _migrate_users_schema(self, connection: Connection) -> bool:
         column_names = {column["name"] for column in inspect(connection).get_columns("users")}
         dialect_name = connection.dialect.name
 
@@ -119,12 +123,13 @@ class Database:
             )
             if dialect_name in {"mysql", "mariadb"}:
                 connection.execute(text("ALTER TABLE users MODIFY COLUMN password_hash VARCHAR(255) NOT NULL"))
-            return
+            return True
 
         connection.execute(
             text("UPDATE users SET password_hash = :password_hash WHERE password_hash IS NULL OR password_hash = ''"),
             {"password_hash": "disabled"},
         )
+        return False
 
     def _move_single_legacy_user_tasks_to_admin(self, connection: Connection) -> None:
         admin_task_count = int(connection.scalar(text("SELECT COUNT(*) FROM tasks WHERE user_id IS NULL")) or 0)
