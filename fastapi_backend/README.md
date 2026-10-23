@@ -2,6 +2,11 @@
 
 업무일지 관리 시스템의 FastAPI 백엔드입니다. 아래 명령은 Docker 이미지를 Synology Container Manager 화면과 동일한 `worklog-fastapi:latest`라는 이름으로 빌드하고 tar 파일로 내보냅니다.
 
+이 문서의 Dockerfile과 빌드 명령은 **API 전용**입니다. Web Station에서
+브라우저 UI와 API를 한 컨테이너로 제공하려면 저장소 루트의 Dockerfile과
+[통합 배포 안내](../DEPLOYMENT.md)를 사용하세요. API 전용 이미지의 `/`는
+UI 번들이 없음을 나타내는 `503`을 반환하며 `/health`와 API는 계속 동작합니다.
+
 ## 주요 구성
 
 - Python 3.12 / FastAPI / Uvicorn
