@@ -1,0 +1,1 @@
+Run `node --test tests/bootstrap.test.mjs` from this browser project. The fake runtime verifies the existing origin argument passed to Program.ConfigureApiBaseUrl; clipboard setup remains intact. No server or credentials are used.
