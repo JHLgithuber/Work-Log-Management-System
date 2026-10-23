@@ -567,7 +567,7 @@
                         Content="저장"
                         Classes="primary fit"
                         ToolTip.Tip="저장 (Ctrl+S)"
-                        IsEnabled="{Binding IsEditorEnabled}"
+                        IsEnabled="{Binding CanEditTask}"
                         Command="{Binding SaveTaskCommand}"/>
               </Grid>
             </Grid>
@@ -579,7 +579,7 @@
                           VerticalScrollBarVisibility="Auto">
               <StackPanel Spacing="14"
                           Margin="0,0,0,16"
-                          IsEnabled="{Binding IsEditorEnabled}">
+                          IsEnabled="{Binding CanEditTask}">
 	                <StackPanel>
 	                  <TextBlock Classes="label"
 	                             Text="제목"/>
