@@ -111,8 +111,8 @@ openssl rand -hex 32
 | `WORKLOG_APP_VERSION` | `0.1.0` |
 | `WORKLOG_CORS_ORIGINS` | `*`, 여러 값은 쉼표로 구분 |
 | `WORKLOG_CORS_ALLOW_CREDENTIALS` | `true` |
-| `WORKLOG_ADMIN_USERNAME` | 선택 사항, 기본 관리자 계정 |
-| `WORKLOG_ADMIN_PASSWORD` | 관리자 이름을 지정하면 함께 지정 필요 |
+| `WORKLOG_ADMIN_USERNAME` | 선택 사항, 기본 관리자 계정. 이미지의 `ENTER_ADMIN_USERNAME` 플레이스홀더는 비활성 값으로 처리 |
+| `WORKLOG_ADMIN_PASSWORD` | 관리자 이름을 지정하면 함께 지정 필요. 이미지의 `ENTER_ADMIN_PASSWORD` 플레이스홀더는 비활성 값으로 처리 |
 | `WORKLOG_JWT_SECRET_KEY` | 운영 환경에서 고정된 안전한 값 권장 |
 | `WORKLOG_JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `1440` |
 | `WORKLOG_JWT_REFRESH_TOKEN_EXPIRE_DAYS` | `90` (사용할 때마다 만료 기간 갱신) |
