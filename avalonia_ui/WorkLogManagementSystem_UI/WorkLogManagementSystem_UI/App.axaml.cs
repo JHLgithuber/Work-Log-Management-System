@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Data.Core;
@@ -48,6 +49,10 @@ public partial class App : Application
         AppSettingsService.RefreshCurrentThemeBrushResources();
     }
 
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026",
+        Justification = "This Avalonia desktop-only validation plugin cleanup is never executed by the trimmed browser lifetime.")]
     private void DisableAvaloniaDataAnnotationValidation()
     {
         // Get an array of plugins to remove
