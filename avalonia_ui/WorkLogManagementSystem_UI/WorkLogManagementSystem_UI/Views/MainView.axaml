@@ -5,6 +5,7 @@
              xmlns:vm="clr-namespace:WorkLogManagementSystem_UI.ViewModels"
              xmlns:models="clr-namespace:WorkLogManagementSystem_UI.Models"
              xmlns:controls="clr-namespace:WorkLogManagementSystem_UI.Controls"
+             xmlns:input="clr-namespace:Avalonia.Input.TextInput;assembly=Avalonia.Base"
              mc:Ignorable="d"
              d:DesignWidth="1180"
              d:DesignHeight="760"
@@ -169,6 +170,8 @@
       <Setter Property="MinHeight" Value="100"/>
       <Setter Property="TextWrapping" Value="Wrap"/>
       <Setter Property="AcceptsReturn" Value="True"/>
+      <Setter Property="input:TextInputOptions.Multiline" Value="True"/>
+      <Setter Property="input:TextInputOptions.ReturnKeyType" Value="Return"/>
     </Style>
     <Style Selector="CalendarDatePicker.date-input">
       <Setter Property="HorizontalAlignment" Value="Stretch"/>

@@ -4,6 +4,7 @@ using Avalonia.Automation.Provider;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Input.TextInput;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -30,6 +31,7 @@ static class UiRegressionChecks
             ("Password automation values do not expose plaintext", PasswordAutomationValue),
             ("Password automation change events do not expose plaintext", PasswordAutomationEvents),
             ("Ordinary text remains accessible and editable", OrdinaryTextAutomation),
+            ("여러 줄 편집기가 IME 줄바꿈 키를 요청한다", MultilineEditorOptions),
         };
         int failures = 0;
         foreach (var test in cases)
@@ -55,6 +57,28 @@ static class UiRegressionChecks
         var picker = view.FindControl<CalendarDatePicker>("TaskListDatePicker")!;
         var input = picker.GetVisualDescendants().OfType<TextBox>().Single();
         return (window, model, picker, input);
+    }
+
+    static void MultilineEditorOptions()
+    {
+        var context = OpenDateView();
+        try
+        {
+            var editors = context.Window.GetVisualDescendants().OfType<TextBox>()
+                .Where(input => input.Classes.Contains("editor")).ToArray();
+            Check(editors.Length >= 3, "검사할 실제 여러 줄 편집기가 부족함");
+            foreach (var input in editors)
+            {
+                var options = TextInputOptions.FromStyledElement(input);
+                Check(input.AcceptsReturn && options.Multiline,
+                    "AcceptsReturn과 IME Multiline 설정이 일치하지 않음");
+                Check(options.ReturnKeyType == TextInputReturnKeyType.Return,
+                    "여러 줄 편집기가 IME Return 키를 요청하지 않음");
+            }
+            Check(!TextInputOptions.FromStyledElement(context.Input).Multiline,
+                "단일행 날짜 입력에 여러 줄 옵션이 전파됨");
+        }
+        finally { context.Window.Close(); }
     }
 
     static void DateEntry(bool loseFocus)
