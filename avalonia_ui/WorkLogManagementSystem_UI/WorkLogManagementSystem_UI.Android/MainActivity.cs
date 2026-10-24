@@ -19,6 +19,8 @@ namespace WorkLogManagementSystem_UI.Android;
     Theme = "@style/MyTheme.NoActionBar",
     Icon = "@drawable/icon",
     MainLauncher = true,
+    // One Avalonia lifetime owns one MainView; launcher intents must reuse its host.
+    LaunchMode = LaunchMode.SingleTask,
     WindowSoftInputMode = SoftInput.AdjustResize,
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize)]
 public class MainActivity : AvaloniaMainActivity<App>
