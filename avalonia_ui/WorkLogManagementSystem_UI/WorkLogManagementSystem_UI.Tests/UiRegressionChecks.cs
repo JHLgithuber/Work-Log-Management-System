@@ -1,4 +1,6 @@
 using Avalonia;
+using Avalonia.Automation.Peers;
+using Avalonia.Automation.Provider;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
@@ -7,6 +9,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using WorkLogManagementSystem_UI.Services;
+using WorkLogManagementSystem_UI.Controls;
 using WorkLogManagementSystem_UI.ViewModels;
 using WorkLogManagementSystem_UI.Views;
 
@@ -24,6 +27,9 @@ static class UiRegressionChecks
             ("ISO date entry commits on Enter", () => DateEntry(false)),
             ("ISO date entry commits on focus loss", () => DateEntry(true)),
             ("Invalid date entry retains the selected day", InvalidDateEntry),
+            ("Password automation values do not expose plaintext", PasswordAutomationValue),
+            ("Password automation change events do not expose plaintext", PasswordAutomationEvents),
+            ("Ordinary text remains accessible and editable", OrdinaryTextAutomation),
         };
         int failures = 0;
         foreach (var test in cases)
@@ -85,5 +91,37 @@ static class UiRegressionChecks
     static void Check(bool condition, string message)
     {
         if (!condition) throw new Exception(message);
+    }
+
+    static void PasswordAutomationValue()
+    {
+        var input = new ImeSafeTextBox { PasswordChar = '*', Text = "TEST ONLY synthetic password" };
+        var provider = ControlAutomationPeer.CreatePeerForElement(input)!.GetProvider<IValueProvider>()!;
+        Check(string.IsNullOrEmpty(provider.Value), "The password is readable through the automation value provider");
+        input.Text = "TEST ONLY changed synthetic password";
+        Check(string.IsNullOrEmpty(provider.Value), "A changed password is readable through automation");
+    }
+
+    static void OrdinaryTextAutomation()
+    {
+        var input = new ImeSafeTextBox { Text = "TEST ONLY accessible text" };
+        var provider = ControlAutomationPeer.CreatePeerForElement(input)!.GetProvider<IValueProvider>()!;
+        Check(provider.Value == input.Text, "Ordinary text is no longer accessible");
+        provider.SetValue("TEST ONLY edited text");
+        Check(input.Text == "TEST ONLY edited text", "Automation can no longer edit ordinary text");
+    }
+
+    static void PasswordAutomationEvents()
+    {
+        var input = new ImeSafeTextBox { PasswordChar = '*', Text = "TEST ONLY old secret" };
+        var peer = ControlAutomationPeer.CreatePeerForElement(input)!;
+        bool leaked = false;
+        peer.PropertyChanged += (_, change) =>
+        {
+            leaked |= change.OldValue is string oldValue && oldValue.Contains("secret") ||
+                change.NewValue is string newValue && newValue.Contains("secret");
+        };
+        input.Text = "TEST ONLY new secret";
+        Check(!leaked, "An automation change event contained the password");
     }
 }
