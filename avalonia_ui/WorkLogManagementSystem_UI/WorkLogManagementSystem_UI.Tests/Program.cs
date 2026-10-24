@@ -5,6 +5,8 @@ using WorkLogManagementSystem_UI.Models;
 using WorkLogManagementSystem_UI.Services;
 using WorkLogManagementSystem_UI.ViewModels;
 
+if (args.Contains("--ui")) return UiRegressionChecks.Run();
+
 // Dependency-free regression runner. All requests stay in this fake handler.
 var cases = new (string Name, Func<Task> Run)[]
 {

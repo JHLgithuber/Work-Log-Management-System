@@ -8,6 +8,12 @@ dotnet run --project avalonia_ui/WorkLogManagementSystem_UI/WorkLogManagementSys
 
 This dependency-free executable returns a nonzero exit code when a check fails. It builds the real shared Avalonia project, then exercises its generated commands against an in-memory HTTP handler. It does not start the application, load saved credentials/settings, or contact a backend. All synthetic dates are in 2099.
 
+For control-level UI regressions, run the same project with `-- --ui`. This mode
+uses Avalonia.Headless and a synthetic HTTP handler; it does not load desktop
+settings or credentials. It checks manual ISO date entry on Enter/focus loss and
+invalid-date handling against the real MainView template and binding. Windows
+runtime interaction remains a separate validation step.
+
 Coverage:
 
 - Saving while navigating preserves the original task-entry date and text, without replacing the newer editor.

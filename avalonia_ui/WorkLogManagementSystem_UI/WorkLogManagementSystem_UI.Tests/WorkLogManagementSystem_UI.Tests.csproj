@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Avalonia.Headless" />
     <ProjectReference Include="../WorkLogManagementSystem_UI/WorkLogManagementSystem_UI.csproj" />
   </ItemGroup>
 </Project>
