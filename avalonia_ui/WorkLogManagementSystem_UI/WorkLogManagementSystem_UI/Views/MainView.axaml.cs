@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
@@ -15,6 +16,7 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using WorkLogManagementSystem_UI.Controls;
+using WorkLogManagementSystem_UI.Models;
 using WorkLogManagementSystem_UI.Services;
 using WorkLogManagementSystem_UI.ViewModels;
 
@@ -48,6 +50,12 @@ public partial class MainView : UserControl
     private bool _isTaskPaneOpen = true;
     private bool _isTaskPaneExpanded;
     private bool _editorBringIntoViewQueued;
+    private double _imeOcclusionHeight;
+    private DateTime? _taskListDate;
+    private int _taskListRestoreVersion;
+    private TaskListAnchor? _taskListAnchor;
+    private sealed record TaskListAnchor(ScrollViewer Scroll, int? TaskId, double RelativeY,
+        double OffsetY, int? SelectedId, DateTime? Date);
     private TextBox? _focusedTaskEditor;
     private IInputPane? _inputPane;
     private CancellationTokenSource? _imeAnimationCancellation;
@@ -148,6 +156,7 @@ public partial class MainView : UserControl
             CancelImeAnimation();
             RootThemeScope.Padding = _imeBasePadding;
             _imeInsetsAttached = false;
+            _imeOcclusionHeight = 0;
         }
 
         base.OnDetachedFromVisualTree(eventArgs);
@@ -157,6 +166,7 @@ public partial class MainView : UserControl
     {
         double currentHeight = Math.Max(0, RootThemeScope.Padding.Bottom - _imeBasePadding.Bottom);
         double targetHeight = Math.Max(0, eventArgs.EndRect.Height);
+        _imeOcclusionHeight = targetHeight;
 
         CancelImeAnimation();
 
@@ -232,7 +242,8 @@ public partial class MainView : UserControl
 
     private void SetImeOcclusionHeight(double height)
     {
-        RootThemeScope.Padding = CreateImePadding(Math.Max(0, height));
+        _imeOcclusionHeight = Math.Max(0, height);
+        RootThemeScope.Padding = CreateImePadding(_imeOcclusionHeight);
         QueueFocusedTaskEditorIntoView();
     }
 
@@ -331,7 +342,8 @@ public partial class MainView : UserControl
 
     private void OnEditorScrollChanged(object? sender, ScrollChangedEventArgs eventArgs)
     {
-        if (Math.Abs(eventArgs.ViewportDelta.Y) > 0.5)
+        // 뷰포트가 커질 때는 사용자 스크롤 위치를 되돌리지 않는다.
+        if (eventArgs.ViewportDelta.Y < -0.5)
         {
             QueueFocusedTaskEditorIntoView();
         }
@@ -339,7 +351,7 @@ public partial class MainView : UserControl
 
     private void QueueFocusedTaskEditorIntoView()
     {
-        if (_editorBringIntoViewQueued)
+        if (_imeOcclusionHeight <= 0 || _editorBringIntoViewQueued)
         {
             return;
         }
@@ -349,7 +361,8 @@ public partial class MainView : UserControl
         {
             _editorBringIntoViewQueued = false;
 
-            if (_focusedTaskEditor is not { IsFocused: true } textBox ||
+            if (_imeOcclusionHeight <= 0 ||
+                _focusedTaskEditor is not { IsFocused: true } textBox ||
                 textBox.FindAncestorOfType<ScrollViewer>() != EditorScrollViewer)
             {
                 return;
@@ -370,12 +383,17 @@ public partial class MainView : UserControl
         if (_subscribedViewModel is not null)
         {
             _subscribedViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            _subscribedViewModel.PropertyChanging -= OnViewModelPropertyChanging;
             _subscribedViewModel.CloseWindowRequested -= OnCloseWindowRequested;
             _subscribedViewModel = null;
         }
 
+        _taskListAnchor = null;
+        _taskListDate = null;
         if (DataContext is MainViewModel viewModel)
         {
+            _taskListDate = viewModel.SelectedDate?.Date;
+            viewModel.PropertyChanging += OnViewModelPropertyChanging;
             viewModel.PropertyChanged += OnViewModelPropertyChanged;
             viewModel.CloseWindowRequested += OnCloseWindowRequested;
             _subscribedViewModel = viewModel;
@@ -478,8 +496,67 @@ public partial class MainView : UserControl
         _hostWindow.Close();
     }
 
+    private void OnViewModelPropertyChanging(object? sender, PropertyChangingEventArgs eventArgs)
+    {
+        if (eventArgs.PropertyName != nameof(MainViewModel.Tasks) || sender is not MainViewModel model)
+            return;
+        _taskListAnchor = null;
+        if (!model.IsAuthenticated || _taskListDate != model.SelectedDate?.Date)
+            return;
+        var tree = this.GetVisualDescendants().OfType<TreeView>().FirstOrDefault();
+        var scroll = tree?.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+        if (tree is null || scroll is null || scroll.Viewport.Height <= 0)
+            return;
+        var anchor = tree.GetVisualDescendants().OfType<TreeViewItem>()
+            .Select(item => new { Item = item, Point = item.TranslatePoint(default, scroll) })
+            .Where(x => x.Item.DataContext is TaskDto && x.Point is { } p &&
+                p.Y < scroll.Viewport.Height && p.Y + x.Item.Bounds.Height > 0)
+            .OrderBy(x => Math.Abs(x.Point!.Value.Y)).FirstOrDefault();
+        _taskListAnchor = new TaskListAnchor(scroll, (anchor?.Item.DataContext as TaskDto)?.Id,
+            anchor?.Point?.Y ?? 0, scroll.Offset.Y, model.SelectedTask?.Id, model.SelectedDate?.Date);
+    }
+
+    private void RestoreTaskListAnchor(MainViewModel model, TaskListAnchor anchor)
+    {
+        // 선택 이동과 날짜·세션 변경은 재조회 위치 복원보다 우선한다.
+        if (!ReferenceEquals(DataContext, model) || !model.IsAuthenticated ||
+            anchor.Date != model.SelectedDate?.Date || model.SelectedTask?.Id != anchor.SelectedId)
+            return;
+        var scroll = anchor.Scroll;
+        if (!scroll.IsAttachedToVisualTree()) return;
+        UpdateLayout();
+        var tree = scroll.FindAncestorOfType<TreeView>();
+        var item = tree?.GetVisualDescendants().OfType<TreeViewItem>()
+            .FirstOrDefault(x => x.DataContext is TaskDto task && task.Id == anchor.TaskId);
+        var point = item?.TranslatePoint(default, scroll);
+        double offset = point is { } p ? scroll.Offset.Y + p.Y - anchor.RelativeY : anchor.OffsetY;
+        scroll.Offset = new Vector(scroll.Offset.X,
+            Math.Clamp(offset, 0, Math.Max(0, scroll.Extent.Height - scroll.Viewport.Height)));
+    }
+
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
     {
+        if (sender is MainViewModel model)
+        {
+            if (eventArgs.PropertyName == nameof(MainViewModel.Tasks))
+            {
+                int restoreVersion = ++_taskListRestoreVersion;
+                var anchor = _taskListAnchor;
+                _taskListAnchor = null;
+                _taskListDate = model.IsAuthenticated ? model.SelectedDate?.Date : null;
+                // 템플릿의 선택 항목 자동 노출이 끝난 뒤 복원한다.
+                if (anchor is not null)
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        if (restoreVersion == _taskListRestoreVersion) RestoreTaskListAnchor(model, anchor);
+                    }, DispatcherPriority.Background);
+            }
+            else if (eventArgs.PropertyName == nameof(MainViewModel.IsAuthenticated) && !model.IsAuthenticated)
+            {
+                _taskListDate = null;
+                _taskListAnchor = null;
+            }
+        }
         if (eventArgs.PropertyName == nameof(MainViewModel.ActiveThemeVariant) &&
             sender is MainViewModel viewModel)
         {

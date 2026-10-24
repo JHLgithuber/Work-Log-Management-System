@@ -14,7 +14,7 @@ using WorkLogManagementSystem_UI.Controls;
 using WorkLogManagementSystem_UI.ViewModels;
 using WorkLogManagementSystem_UI.Views;
 
-static class UiRegressionChecks
+static partial class UiRegressionChecks
 {
     public static int Run()
     {
@@ -32,6 +32,13 @@ static class UiRegressionChecks
             ("Password automation change events do not expose plaintext", PasswordAutomationEvents),
             ("Ordinary text remains accessible and editable", OrdinaryTextAutomation),
             ("여러 줄 편집기가 IME 줄바꿈 키를 요청한다", MultilineEditorOptions),
+            ("재조회가 보이던 과업 위치를 유지한다", () => TaskAnchor("same")),
+            ("정렬 변경이 과업 식별자로 위치를 유지한다", () => TaskAnchor("sort")),
+            ("앵커 삭제 시 유효한 스크롤 범위를 유지한다", () => TaskAnchor("delete")),
+            ("새 선택이 이전 재조회 위치보다 우선한다", () => TaskAnchor("select")),
+            ("새 과업 선택이 이전 위치보다 우선한다", () => TaskAnchor("new")),
+            ("날짜 변경이 이전 재조회 위치보다 우선한다", () => TaskAnchor("date")),
+            ("키보드 닫힘이 스크롤 위치를 되돌리지 않는다", ImeScrollPolicy),
         };
         int failures = 0;
         foreach (var test in cases)
