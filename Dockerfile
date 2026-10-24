@@ -5,7 +5,8 @@ ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
     DOTNET_NOLOGO=1
 
 WORKDIR /src
-COPY global.json ./
+COPY global.json NuGet.Config ./
+COPY vendor/avalonia/packages ./vendor/avalonia/packages
 
 # Emscripten in the native WebAssembly workload requires Python on Linux.
 RUN apt-get update \

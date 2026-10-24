@@ -13,7 +13,7 @@
         <PackageVersion Include="Avalonia.Desktop" Version="11.3.22" />
         <PackageVersion Include="Avalonia.Headless" Version="11.3.22" />
         <PackageVersion Include="Avalonia.iOS" Version="11.3.22" />
-        <PackageVersion Include="Avalonia.Browser" Version="11.3.22" />
+        <PackageVersion Include="Avalonia.Browser" Version="11.3.22-qa-ime.3" />
         <PackageVersion Include="Avalonia.Android" Version="11.3.22" />
 
         <!-- Avalonia 11.3.22 can run with SkiaSharp 3; these overrides remove Android XA0141 warnings for 16 KB page sizes. -->

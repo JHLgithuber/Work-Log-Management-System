@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-browser</TargetFramework>
+    <AssemblyName>Avalonia.Browser</AssemblyName>
+    <Version>11.3.22</Version>
+    <AssemblyVersion>11.3.22.0</AssemblyVersion>
+    <FileVersion>11.3.22.0</FileVersion>
+    <Nullable>enable</Nullable>
+    <LangVersion>12</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>source/build/avalonia.snk</AssemblyOriginatorKeyFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="source/src/Browser/Avalonia.Browser/**/*.cs" Exclude="source/src/Browser/Avalonia.Browser/**/obj/**;source/src/Browser/Avalonia.Browser/**/bin/**" />
+    <Compile Include="source/src/Shared/RawEventGrouping.cs" />
+    <PackageReference Include="Avalonia" Version="11.3.22" ExcludeAssets="compile" />
+    <PackageReference Include="Avalonia.Skia" Version="11.3.22" ExcludeAssets="compile" />
+    <PackageReference Include="SkiaSharp" Version="2.88.9" />
+    <PackageReference Include="HarfBuzzSharp" Version="8.3.1.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Avalonia.Metal"><HintPath>$(NuGetPackageRoot)avalonia/11.3.22/lib/net8.0/Avalonia.Metal.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Avalonia.Controls"><HintPath>$(NuGetPackageRoot)avalonia/11.3.22/lib/net8.0/Avalonia.Controls.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Avalonia"><HintPath>$(NuGetPackageRoot)avalonia/11.3.22/lib/net8.0/Avalonia.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Avalonia.Markup.Xaml"><HintPath>$(NuGetPackageRoot)avalonia/11.3.22/lib/net8.0/Avalonia.Markup.Xaml.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Avalonia.Base"><HintPath>$(NuGetPackageRoot)avalonia/11.3.22/lib/net8.0/Avalonia.Base.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Avalonia.DesignerSupport"><HintPath>$(NuGetPackageRoot)avalonia/11.3.22/lib/net8.0/Avalonia.DesignerSupport.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Avalonia.OpenGL"><HintPath>$(NuGetPackageRoot)avalonia/11.3.22/lib/net8.0/Avalonia.OpenGL.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Avalonia.Dialogs"><HintPath>$(NuGetPackageRoot)avalonia/11.3.22/lib/net8.0/Avalonia.Dialogs.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Avalonia.Vulkan"><HintPath>$(NuGetPackageRoot)avalonia/11.3.22/lib/net8.0/Avalonia.Vulkan.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Avalonia.MicroCom"><HintPath>$(NuGetPackageRoot)avalonia/11.3.22/lib/net8.0/Avalonia.MicroCom.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Avalonia.Markup"><HintPath>$(NuGetPackageRoot)avalonia/11.3.22/lib/net8.0/Avalonia.Markup.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Avalonia.Skia"><HintPath>$(NuGetPackageRoot)avalonia.skia/11.3.22/lib/net8.0/Avalonia.Skia.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

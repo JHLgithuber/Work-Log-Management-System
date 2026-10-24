@@ -40,3 +40,13 @@
 **/*.tar
 **/*.tar.gz
 **/*.zip
+
+# 검증된 Browser 패키지와 오프라인 웹 전달물
+!NuGet.Config
+!vendor/
+!vendor/avalonia/
+!vendor/avalonia/packages/
+!vendor/avalonia/packages/*.nupkg
+!Dockerfile.prebuilt
+!published-web/
+!published-web/**
