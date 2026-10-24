@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Input;
@@ -20,6 +21,8 @@ public class ImeSafeTextBox : TextBox
     }
 
     protected override Type StyleKeyOverride => typeof(TextBox);
+
+    protected override AutomationPeer OnCreateAutomationPeer() => new ImeSafeTextBoxAutomationPeer(this);
 
     private async void OnBrowserClipboardShortcutKeyDown(object? sender, KeyEventArgs eventArgs)
     {

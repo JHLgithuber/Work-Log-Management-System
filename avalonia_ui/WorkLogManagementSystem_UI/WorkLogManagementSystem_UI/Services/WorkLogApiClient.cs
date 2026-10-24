@@ -21,10 +21,11 @@ public sealed class WorkLogApiClient : IDisposable
         string? accessToken = null,
         Func<(string AccessToken, string RefreshToken)>? tokenProvider = null,
         Func<TokenResponse, Task>? tokenUpdated = null,
-        TimeSpan? requestTimeout = null)
+        TimeSpan? requestTimeout = null,
+        HttpMessageHandler? handler = null)
     {
         Uri baseAddress = new(NormalizeBaseUrl(baseUrl));
-        _httpClient = tokenProvider is not null && tokenUpdated is not null
+        _httpClient = handler is not null ? new HttpClient(handler) : tokenProvider is not null && tokenUpdated is not null
             ? new HttpClient(new RefreshingAuthHandler(baseAddress, tokenProvider, tokenUpdated))
             : new HttpClient();
         _httpClient.BaseAddress = baseAddress;
@@ -109,11 +110,15 @@ public sealed class WorkLogApiClient : IDisposable
         await EnsureSuccessAsync(response, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<TaskDto>> GetTasksAsync(DateTime targetDate, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<TaskDto>> GetTasksAsync(
+        DateTime targetDate,
+        int? focusedTaskId,
+        CancellationToken cancellationToken)
     {
         string dateValue = Uri.EscapeDataString(targetDate.ToString("yyyy-MM-dd"));
+        string focusedTaskQuery = focusedTaskId is null ? string.Empty : $"&focused_task_id={focusedTaskId.Value}";
         List<TaskDto>? tasks = await _httpClient.GetFromJsonAsync(
-            $"/tasks?target_date={dateValue}",
+            $"/tasks?target_date={dateValue}{focusedTaskQuery}",
             AppJsonSerializerContext.TypeInfo<List<TaskDto>>(),
             cancellationToken);
         return tasks ?? new List<TaskDto>();
@@ -142,6 +147,18 @@ public sealed class WorkLogApiClient : IDisposable
     public async Task DeleteTaskAsync(int taskId, CancellationToken cancellationToken)
     {
         using HttpResponseMessage response = await _httpClient.DeleteAsync($"/tasks/{taskId}", cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+    }
+
+    public async Task DeleteWorkEntryAsync(
+        int taskId,
+        DateTime entryDate,
+        CancellationToken cancellationToken)
+    {
+        string dateValue = Uri.EscapeDataString(entryDate.ToString("yyyy-MM-dd"));
+        using HttpResponseMessage response = await _httpClient.DeleteAsync(
+            $"/tasks/{taskId}/entries/{dateValue}",
+            cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
     }
 

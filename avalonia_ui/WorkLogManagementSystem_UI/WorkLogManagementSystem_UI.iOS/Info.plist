@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>WorkLogManagementSystem_UI</string>
+	<string>업무일지 관리체계</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.companyname.worklogmanagementsystemui</string>
 	<key>CFBundleShortVersionString</key>

@@ -6,8 +6,15 @@ dependencies = [
     "aiosqlite>=0.21",
     "asyncmy>=0.2.10",
     "fastapi>=0.136.3",
-    "mariadb>=1.1.14",
     "python-dotenv>=1.0",
     "sqlalchemy>=2.0",
+    "starlette>=1.3.1",
     "uvicorn>=0.48.0",
 ]
+
+[dependency-groups]
+dev = ["httpx>=0.28", "pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

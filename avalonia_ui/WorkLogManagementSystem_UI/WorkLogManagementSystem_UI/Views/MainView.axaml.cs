@@ -71,7 +71,7 @@ public partial class MainView : UserControl
         DataContextChanged += OnDataContextChanged;
         AppSettingsService.ThemeResourcesChanged += OnThemeResourcesChanged;
         UpdateExpandTaskPaneButton();
-        UpdateResponsiveLayout(Bounds.Width);
+        UpdateResponsiveLayout(Bounds.Width, Bounds.Height);
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs eventArgs)
@@ -98,7 +98,7 @@ public partial class MainView : UserControl
         {
             TopBar.IsVisible = true;
             UpdateDesktopWindowControls();
-            UpdateResponsiveLayout(Bounds.Width);
+            UpdateResponsiveLayout(Bounds.Width, Bounds.Height);
         }
 
         if (!OperatingSystem.IsAndroid() || topLevel is null)
@@ -390,8 +390,8 @@ public partial class MainView : UserControl
             textBox.CommitPendingComposition();
         }
 
-        if (_allowHostWindowClose ||
-            DataContext is not MainViewModel { HasUnsavedTaskChanges: true } viewModel)
+        if (_allowHostWindowClose || DataContext is not MainViewModel viewModel ||
+            (!viewModel.HasUnsavedTaskChanges && !viewModel.HasUnsavedDailyNoteChanges))
         {
             return;
         }
@@ -513,17 +513,17 @@ public partial class MainView : UserControl
 
     private void OnSizeChanged(object? sender, SizeChangedEventArgs eventArgs)
     {
-        UpdateResponsiveLayout(eventArgs.NewSize.Width);
+        UpdateResponsiveLayout(eventArgs.NewSize.Width, eventArgs.NewSize.Height);
     }
 
-    private void UpdateResponsiveLayout(double width)
+    private void UpdateResponsiveLayout(double width, double height)
     {
         if (width <= 0)
         {
             return;
         }
 
-        UpdateModalWidths(width);
+        UpdateModalSizes(width, height);
 
         // Desktop caption controls permanently consume the right side of the top bar.
         // Shift only the desktop breakpoints by their occupied width so toolbar
@@ -665,7 +665,7 @@ public partial class MainView : UserControl
             _isTaskPaneOpen = true;
         }
 
-        UpdateResponsiveLayout(Bounds.Width);
+        UpdateResponsiveLayout(Bounds.Width, Bounds.Height);
         UpdateExpandTaskPaneButton();
 
         TaskListPanel.Opacity = 0.72;
@@ -837,17 +837,28 @@ public partial class MainView : UserControl
         EditorHeaderActions.Margin = new Avalonia.Thickness(0);
     }
 
-    private void UpdateModalWidths(double width)
+    private void UpdateModalSizes(double width, double height)
     {
+        double availableHeight = Math.Max(0, height - ModalViewportPadding);
         LoginModalCard.Width = Math.Min(PreferredLoginModalWidth, Math.Max(0, width - ModalViewportPadding));
         SettingsModalCard.Width = Math.Min(PreferredSettingsModalWidth, Math.Max(0, width - ModalViewportPadding));
         RegisterUserModalCard.Width = Math.Min(PreferredRegisterUserModalWidth, Math.Max(0, width - ModalViewportPadding));
+        ChangePasswordModalCard.MaxHeight = availableHeight;
+        ExportRangeModalCard.MaxHeight = availableHeight;
+        ConnectionErrorModalCard.MaxHeight = Math.Min(420, availableHeight);
+        LoginModalCard.MaxHeight = availableHeight;
+        SettingsModalCard.MaxHeight = availableHeight;
+        RegisterUserModalCard.MaxHeight = availableHeight;
+        DeleteDateEntryConfirmationModalCard.MaxHeight = availableHeight;
         DeleteTaskConfirmationModalCard.Width = Math.Min(
             PreferredDeleteConfirmationModalWidth,
             Math.Max(0, width - ModalViewportPadding));
+        DeleteDateEntryConfirmationModalCard.Width = DeleteTaskConfirmationModalCard.Width;
+        DeleteTaskConfirmationModalCard.MaxHeight = availableHeight;
         UnsavedChangesModalCard.Width = Math.Min(
             PreferredUnsavedChangesModalWidth,
             Math.Max(0, width - ModalViewportPadding));
+        UnsavedChangesModalCard.MaxHeight = availableHeight;
     }
 
     private void ApplyEditorDateLayout(double editorContentWidth)
@@ -970,7 +981,7 @@ public partial class MainView : UserControl
         }
 
         _isTaskPaneOpen = true;
-        UpdateResponsiveLayout(Bounds.Width);
+        UpdateResponsiveLayout(Bounds.Width, Bounds.Height);
         await AnimateTaskPaneAsync(opening: true);
     }
 
@@ -986,13 +997,13 @@ public partial class MainView : UserControl
 
         if (!_isNarrowLayout || !_isTaskPaneOpen)
         {
-            UpdateResponsiveLayout(Bounds.Width);
+            UpdateResponsiveLayout(Bounds.Width, Bounds.Height);
             return;
         }
 
         await AnimateTaskPaneAsync(opening: false);
         _isTaskPaneOpen = false;
-        UpdateResponsiveLayout(Bounds.Width);
+        UpdateResponsiveLayout(Bounds.Width, Bounds.Height);
     }
 
     private async Task AnimateTaskPaneAsync(bool opening)

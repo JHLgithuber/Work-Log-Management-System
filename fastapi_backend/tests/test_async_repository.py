@@ -93,3 +93,44 @@ class AsyncRepositoryTests(IsolatedAsyncioTestCase):
             await registration
 
         self.assertLess(event_loop_delay, 0.1)
+
+    async def test_focused_task_stays_in_graph_outside_selected_date(self) -> None:
+        task_date = date(2026, 8, 12)
+        root = await self.task_service.create_task(
+            "repository-user",
+            TaskCreate(
+                parent_id=None,
+                title="focused root",
+                content="",
+                priority=0,
+                start_at=DateBounds.start_of_day(task_date),
+                due_at=DateBounds.end_of_day(task_date),
+                actual_end_at=None,
+            ),
+        )
+        child = await self.task_service.create_task(
+            "repository-user",
+            TaskCreate(
+                parent_id=root.id,
+                title="focused child",
+                content="",
+                priority=0,
+                start_at=DateBounds.start_of_day(task_date),
+                due_at=DateBounds.end_of_day(task_date),
+                actual_end_at=None,
+            ),
+        )
+
+        other_date = date(2026, 9, 1)
+        self.assertEqual(
+            await self.task_service.list_tasks_for_date("repository-user", other_date),
+            [],
+        )
+
+        roots = await self.task_service.list_tasks_for_date(
+            "repository-user",
+            other_date,
+            focused_task_id=child.id,
+        )
+        self.assertEqual([task.id for task in roots], [root.id])
+        self.assertEqual([task.id for task in roots[0].children], [child.id])
