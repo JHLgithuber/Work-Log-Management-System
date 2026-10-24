@@ -13,6 +13,8 @@ uses Avalonia.Headless and a synthetic HTTP handler; it does not load desktop
 settings or credentials. It checks manual ISO date entry on Enter/focus loss and
 invalid-date handling against the real MainView template and binding. Windows
 runtime interaction remains a separate validation step.
+It also verifies masked text is absent from automation value reads and change
+events, while ordinary text retains its accessible value and editing support.
 
 Coverage:
 
