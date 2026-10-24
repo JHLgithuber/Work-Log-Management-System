@@ -396,7 +396,6 @@
                                     Grid.Row="0"
                                     Classes="date-input"
                                     MinWidth="200"
-                                    CustomDateFormatString="yyyy-MM-dd (ddd)"
                                     SelectedDate="{Binding SelectedDate, Mode=TwoWay}"/>
                 <Grid Grid.Row="1"
                       ColumnDefinitions="*,*,*"
