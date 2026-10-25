@@ -76,12 +76,13 @@ class TaskRouter:
         self,
         authorization: AuthorizationHeader = None,
         target_date: date | None = None,
+        focused_task_id: int | None = None,
     ) -> list[TaskResponse]:
         username: str = await self._username(authorization)
         if target_date is None:
             tasks = await self._service.list_all_tasks(username)
         else:
-            tasks = await self._service.list_tasks_for_date(username, target_date)
+            tasks = await self._service.list_tasks_for_date(username, target_date, focused_task_id)
         return [TaskResponse.from_domain(task) for task in tasks]
 
     async def get_task(self, task_id: int, authorization: AuthorizationHeader = None) -> TaskResponse:

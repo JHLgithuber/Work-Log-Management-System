@@ -48,10 +48,15 @@ class TaskService:
     async def delete_work_entry(self, username: str, task_id: int, entry_date: date) -> None:
         await self._repository.delete_work_entry(username, task_id, entry_date)
 
-    async def list_tasks_for_date(self, username: str, target_date: date) -> list[Task]:
+    async def list_tasks_for_date(
+        self,
+        username: str,
+        target_date: date,
+        focused_task_id: int | None = None,
+    ) -> list[Task]:
         day_start: datetime = DateBounds.start_of_day(target_date)
         day_end: datetime = DateBounds.end_of_day(target_date)
-        return await self._repository.list_for_date(username, day_start, day_end)
+        return await self._repository.list_for_date(username, day_start, day_end, focused_task_id)
 
     async def list_all_tasks(self, username: str) -> list[Task]:
         return await self._repository.list_all(username)

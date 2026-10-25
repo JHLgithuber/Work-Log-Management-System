@@ -43,7 +43,13 @@ class UserResponse(BaseModel):
     id: int | None
     username: str
     display_name: str
+    is_admin: bool
 
     @classmethod
     def from_domain(cls, user: AuthenticatedUser) -> "UserResponse":
-        return cls(id=user.id, username=user.username, display_name=user.display_name)
+        return cls(
+            id=user.id,
+            username=user.username,
+            display_name=user.display_name,
+            is_admin=user.is_admin,
+        )

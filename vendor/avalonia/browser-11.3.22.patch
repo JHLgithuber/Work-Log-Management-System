@@ -1,0 +1,394 @@
+diff --git a/src/Browser/Avalonia.Browser/BrowserTextInputMethod.cs b/src/Browser/Avalonia.Browser/BrowserTextInputMethod.cs
+index 1172285..1c4d8f9 100644
+--- a/src/Browser/Avalonia.Browser/BrowserTextInputMethod.cs
++++ b/src/Browser/Avalonia.Browser/BrowserTextInputMethod.cs
+@@ -2,6 +2,7 @@
+ using System.Runtime.InteropServices.JavaScript;
+ using Avalonia.Browser.Interop;
+ using Avalonia.Input.TextInput;
++using Avalonia.Input;
+ 
+ namespace Avalonia.Browser;
+ 
+@@ -11,10 +12,14 @@ internal class BrowserTextInputMethod(
+     JSObject inputElement)
+     : ITextInputMethodImpl
+ {
+-    private readonly JSObject _inputElement = inputElement ?? throw new ArgumentNullException(nameof(inputElement));
++    private JSObject _inputElement = inputElement ?? throw new ArgumentNullException(nameof(inputElement));
+     private readonly JSObject _containerElement = containerElement ?? throw new ArgumentNullException(nameof(containerElement));
+     private readonly BrowserInputHandler _inputHandler = inputHandler ?? throw new ArgumentNullException(nameof(inputHandler));
+     private TextInputMethodClient? _client;
++    private bool _multiline;
++    private TextInputMethodClient? _compositionClient;
++    private IInputElement? _compositionTarget;
++    private string? _compositionText;
+ 
+     public bool IsComposing { get; private set; }
+ 
+@@ -29,12 +34,14 @@ public void SetClient(TextInputMethodClient? client)
+         if (_client != null)
+         {
+             _client.SurroundingTextChanged -= SurroundingTextChanged;
++            _client.SelectionChanged -= SurroundingTextChanged;
+             _client.InputPaneActivationRequested -= InputPaneActivationRequested;
+         }
+ 
+         if (client != null)
+         {
+             client.SurroundingTextChanged += SurroundingTextChanged;
++            client.SelectionChanged += SurroundingTextChanged;
+             client.InputPaneActivationRequested += InputPaneActivationRequested;
+         }
+ 
+@@ -92,6 +99,13 @@ public void SetCursorRect(Rect rect)
+ 
+     public void SetOptions(TextInputOptions options)
+     {
++        if (_multiline != options.Multiline)
++        {
++            var previous = _inputElement;
++            _inputElement = InputHelper.SetMultiline(previous, options.Multiline);
++            previous.Dispose();
++            _multiline = options.Multiline;
++        }
+     }
+ 
+     public void Reset()
+@@ -100,8 +114,26 @@ public void Reset()
+         InputHelper.SetSurroundingText(_inputElement, "", 0, 0);
+     }
+ 
+-    public void OnBeforeInput(string inputType, int start, int end)
++    public void OnBeforeInput(string inputType, int start, int end, string? data)
+     {
++        if (_client is not null && !IsComposing &&
++            (inputType == "insertText" || inputType == "insertLineBreak"))
++        {
++            if (inputType == "insertLineBreak")
++            {
++                if (!_multiline || data is null)
++                    return;
++                data = "\n";
++            }
++            if (data is not null)
++            {
++                if (start >= 0 && end >= 0)
++                    _client.Selection = new TextSelection(start, end);
++                _inputHandler.RawTextEvent(data);
++            }
++            return;
++        }
++
+         if (inputType != "deleteByComposition")
+         {
+             if (inputType == "deleteContentBackward")
+@@ -127,30 +159,68 @@ public void OnCompositionStart()
+         if (_client == null)
+             return;
+ 
++        if (_compositionTarget is InputElement previous)
++            previous.PropertyChanged -= CompositionTargetPropertyChanged;
++        _compositionClient = _client;
++        _compositionTarget = BrowserWindowingPlatform.Keyboard.FocusedElement;
++        _compositionText = null;
++        if (_compositionTarget is InputElement target)
++            target.PropertyChanged += CompositionTargetPropertyChanged;
+         _client.SetPreeditText(null);
+         IsComposing = true;
+     }
+ 
+     public void OnCompositionUpdate(string? data)
+     {
+-        if (_client == null)
+-            return;
++        _compositionText = data;
++        _compositionClient?.SetPreeditText(data);
++    }
+ 
+-        _client.SetPreeditText(data);
++    private void CompositionTargetPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs args)
++    {
++        if (args.Property == InputElement.IsFocusedProperty && sender is InputElement { IsFocused: false } && IsComposing)
++        {
++            // Finish native composition before TextBox clears its selection on blur.
++            // Some IMEs deliver compositionend synchronously from blur; the fallback
++            // covers clients whose native editor does not produce an end event.
++            InputHelper.BlurElement(_inputElement);
++            if (IsComposing)
++            {
++                // Retire the old native editor before another client can compose.
++                // A delayed end from it must not end the new client's composition.
++                var previous = _inputElement;
++                _inputElement = InputHelper.ReplaceInputElement(previous);
++                previous.Dispose();
++                OnCompositionEnd(_compositionText);
++            }
++        }
+     }
+ 
+     public void OnCompositionEnd(string? data)
+     {
+-        if (_client == null)
+-            return;
+-
++        // The keyboard focus may have changed before the native DOM blur ends
++        // composition. Commit to its original target, never the newly focused field.
++        var client = _compositionClient;
++        var target = _compositionTarget;
++        if (target is InputElement input)
++            input.PropertyChanged -= CompositionTargetPropertyChanged;
++        _compositionClient = null;
++        _compositionTarget = null;
++        _compositionText = null;
+         IsComposing = false;
++        client?.SetPreeditText(null);
+ 
+-        _client.SetPreeditText(null);
+-        
+-        if (data != null)
++        if (data != null && target is Visual { IsAttachedToVisualTree: true } && target.IsEffectivelyEnabled)
+         {
+-            _inputHandler.RawTextEvent(data);
++            if (ReferenceEquals(target, BrowserWindowingPlatform.Keyboard.FocusedElement))
++                _inputHandler.RawTextEvent(data);
++            else
++                target.RaiseEvent(new TextInputEventArgs
++                {
++                    Text = data,
++                    Source = target,
++                    RoutedEvent = InputElement.TextInputEvent
++                });
+         }
+     }
+ }
+diff --git a/src/Browser/Avalonia.Browser/Interop/InputHelper.cs b/src/Browser/Avalonia.Browser/Interop/InputHelper.cs
+index bb2884b..bee0cc5 100644
+--- a/src/Browser/Avalonia.Browser/Interop/InputHelper.cs
++++ b/src/Browser/Avalonia.Browser/Interop/InputHelper.cs
+@@ -31,8 +31,8 @@ public static Task<bool> OnKeyUp(int topLevelId, string code, string key, int mo
+         RedirectInputRetunAsync(topLevelId, t => t.InputHandler.OnKeyUp(code, key, modifier), false);
+ 
+     [JSExport]
+-    public static Task OnBeforeInput(int topLevelId, string inputType, int start, int end) =>
+-        RedirectInputAsync(topLevelId, t => t.InputHandler.TextInputMethod.OnBeforeInput(inputType, start, end));
++    public static Task OnBeforeInput(int topLevelId, string inputType, int start, int end, string? data) =>
++        RedirectInputAsync(topLevelId, t => t.InputHandler.TextInputMethod.OnBeforeInput(inputType, start, end, data));
+ 
+     [JSExport]
+     public static Task OnCompositionStart(int topLevelId) =>
+@@ -89,9 +89,18 @@ public static Task OnKeyboardGeometryChange(int topLevelId, double x, double y,
+     [return: JSMarshalAs<JSType.Array<JSType.Number>>]
+     public static partial double[] GetCoalescedEvents(JSObject pointerEvent);
+ 
++    [JSImport("InputHelper.setMultiline", AvaloniaModule.MainModuleName)]
++    public static partial JSObject SetMultiline(JSObject htmlElement, bool multiline);
++
+     [JSImport("InputHelper.clearInput", AvaloniaModule.MainModuleName)]
+     public static partial void ClearInputElement(JSObject htmlElement);
+ 
++    [JSImport("InputHelper.replaceInputElement", AvaloniaModule.MainModuleName)]
++    public static partial JSObject ReplaceInputElement(JSObject htmlElement);
++
++    [JSImport("InputHelper.blurElement", AvaloniaModule.MainModuleName)]
++    public static partial void BlurElement(JSObject htmlElement);
++
+     [JSImport("InputHelper.focusElement", AvaloniaModule.MainModuleName)]
+     public static partial void FocusElement(JSObject htmlElement);
+ 
+diff --git a/src/Browser/Avalonia.Browser/webapp/modules/avalonia/input.ts b/src/Browser/Avalonia.Browser/webapp/modules/avalonia/input.ts
+index e70c43e..ae79b65 100644
+--- a/src/Browser/Avalonia.Browser/webapp/modules/avalonia/input.ts
++++ b/src/Browser/Avalonia.Browser/webapp/modules/avalonia/input.ts
+@@ -70,6 +70,7 @@ type ReadableDataValue = {
+ };
+ 
+ export class InputHelper {
++    private static readonly synchronizedSelections = new WeakMap<HTMLInputElement | HTMLTextAreaElement, { start: number, end: number }>();
+     static clipboardState: ClipboardState = ClipboardState.None;
+     static resolveClipboard?: (value: readonly ReadableDataItem[]) => void;
+     static rejectClipboard?: (reason?: any) => void;
+@@ -302,7 +303,7 @@ export class InputHelper {
+             : new Uint8Array(await blob.arrayBuffer());
+     }
+ 
+-    public static subscribeInputEvents(element: HTMLInputElement, topLevelId: number) {
++    public static subscribeInputEvents(element: HTMLElement, topLevelId: number) {
+         const keySub = this.subscribeKeyEvents(element, topLevelId);
+         const pointerSub = this.subscribePointerEvents(element, topLevelId);
+         const textSub = this.subscribeTextEvents(element, topLevelId);
+@@ -318,7 +319,7 @@ export class InputHelper {
+         };
+     }
+ 
+-    public static subscribeKeyEvents(element: HTMLInputElement, topLevelId: number) {
++    public static subscribeKeyEvents(element: HTMLElement, topLevelId: number) {
+         const keyDownHandler = (args: KeyboardEvent) => {
+             JsExports.InputHelper.OnKeyDown(topLevelId, args.code, args.key, this.getModifiers(args))
+                 .then((handled: boolean) => {
+@@ -351,7 +352,7 @@ export class InputHelper {
+     }
+ 
+     public static subscribeTextEvents(
+-        element: HTMLInputElement,
++        element: HTMLElement,
+         topLevelId: number) {
+         const compositionStartHandler = (args: CompositionEvent) => {
+             JsExports.InputHelper.OnCompositionStart(topLevelId);
+@@ -372,7 +373,23 @@ export class InputHelper {
+                 end = start + 2;
+             }
+ 
+-            JsExports.InputHelper.OnBeforeInput(topLevelId, args.inputType, start, end);
++            const committed = args.cancelable && !args.isComposing &&
++                (args.inputType === "insertText" ||
++                    (args.inputType === "insertLineBreak" && (args.target as HTMLElement).tagName === "TEXTAREA"));
++            if (committed) {
++                const target = args.target as HTMLInputElement | HTMLTextAreaElement;
++                start = target.selectionStart ?? 0;
++                end = target.selectionEnd ?? 0;
++                const synchronized = InputHelper.synchronizedSelections.get(target);
++                // SurroundingText can contain only the current paragraph. Keep the
++                // managed selection when the DOM still has its clamped projection.
++                if (synchronized?.start === start && synchronized.end === end) {
++                    start = end = -1;
++                }
++                args.preventDefault();
++            }
++            JsExports.InputHelper.OnBeforeInput(topLevelId, args.inputType, start, end,
++                committed ? (args.inputType === "insertLineBreak" ? "\n" : args.data) : null);
+         };
+         element.addEventListener("beforeinput", beforeInputHandler);
+ 
+@@ -388,6 +405,7 @@ export class InputHelper {
+         element.addEventListener("compositionend", compositionEndHandler);
+ 
+         return () => {
++            element.removeEventListener("beforeinput", beforeInputHandler);
+             element.removeEventListener("compositionstart", compositionStartHandler);
+             element.removeEventListener("compositionupdate", compositionUpdateHandler);
+             element.removeEventListener("compositionend", compositionEndHandler);
+@@ -395,7 +413,7 @@ export class InputHelper {
+     }
+ 
+     public static subscribePointerEvents(
+-        element: HTMLInputElement,
++        element: HTMLElement,
+         topLevelId: number
+     ) {
+         const pointerMoveHandler = (args: PointerEvent) => {
+@@ -447,7 +465,7 @@ export class InputHelper {
+     }
+ 
+     public static subscribeDropEvents(
+-        element: HTMLInputElement,
++        element: HTMLElement,
+         topLevelId: number
+     ) {
+         const handler = (args: DragEvent) => {
+@@ -484,7 +502,7 @@ export class InputHelper {
+     }
+ 
+     public static subscribeKeyboardGeometryChange(
+-        element: HTMLInputElement,
++        element: HTMLElement,
+         topLevelId: number) {
+         if ("virtualKeyboard" in navigator) {
+             // (navigator as any).virtualKeyboard.overlaysContent = true;
+@@ -508,15 +526,40 @@ export class InputHelper {
+         return () => {};
+     }
+ 
+-    public static clearInput(inputElement: HTMLInputElement) {
++    public static setMultiline(inputElement: HTMLInputElement | HTMLTextAreaElement, multiline: boolean, replace: boolean = false): HTMLInputElement | HTMLTextAreaElement {
++        if (!replace && inputElement.tagName === (multiline ? "TEXTAREA" : "INPUT")) return inputElement;
++
++        // A textarea with canceled line breaks can corrupt Gboard's next composition.
++        // Use the browser's native single-line editor for single-line clients.
++        const replacement = inputElement.ownerDocument.createElement(multiline ? "textarea" : "input");
++        for (const attribute of Array.from(inputElement.attributes))
++            replacement.setAttribute(attribute.name, attribute.value);
++        replacement.removeAttribute(multiline ? "type" : "wrap");
++        replacement.setAttribute(multiline ? "wrap" : "type", multiline ? "off" : "text");
++        replacement.onpaste = inputElement.onpaste;
++        replacement.oncopy = inputElement.oncopy;
++        replacement.oncut = inputElement.oncut;
++        inputElement.replaceWith(replacement);
++        return replacement;
++    }
++
++    public static replaceInputElement(inputElement: HTMLInputElement | HTMLTextAreaElement): HTMLInputElement | HTMLTextAreaElement {
++        return InputHelper.setMultiline(inputElement, inputElement.tagName === "TEXTAREA", true);
++    }
++
++    public static clearInput(inputElement: HTMLInputElement | HTMLTextAreaElement) {
+         inputElement.value = "";
+     }
+ 
++    public static blurElement(inputElement: HTMLElement) {
++        inputElement.blur();
++    }
++
+     public static focusElement(inputElement: HTMLElement) {
+         inputElement.focus();
+     }
+ 
+-    public static setCursor(inputElement: HTMLInputElement, kind: string) {
++    public static setCursor(inputElement: HTMLInputElement | HTMLTextAreaElement, kind: string) {
+         if (kind === "default") {
+             inputElement.style.removeProperty("cursor");
+         } else {
+@@ -524,7 +567,7 @@ export class InputHelper {
+         }
+     }
+ 
+-    public static setBounds(inputElement: HTMLInputElement, x: number, y: number, caretWidth: number, caretHeight: number, caret: number) {
++    public static setBounds(inputElement: HTMLInputElement | HTMLTextAreaElement, x: number, y: number, caretWidth: number, caretHeight: number, caret: number) {
+         inputElement.style.left = (x).toFixed(0) + "px";
+         inputElement.style.top = (y).toFixed(0) + "px";
+ 
+@@ -534,21 +577,25 @@ export class InputHelper {
+         inputElement.style.top = (y - top).toFixed(0) + "px";
+     }
+ 
+-    public static hide(inputElement: HTMLInputElement) {
++    public static hide(inputElement: HTMLInputElement | HTMLTextAreaElement) {
+         inputElement.style.display = "none";
+     }
+ 
+-    public static show(inputElement: HTMLInputElement) {
++    public static show(inputElement: HTMLInputElement | HTMLTextAreaElement) {
+         inputElement.style.display = "block";
+     }
+ 
+-    public static setSurroundingText(inputElement: HTMLInputElement, text: string, start: number, end: number) {
++    public static setSurroundingText(inputElement: HTMLInputElement | HTMLTextAreaElement, text: string, start: number, end: number) {
+         if (!inputElement) {
+             return;
+         }
+ 
+-        inputElement.value = text;
+-        inputElement.setSelectionRange(start, end);
++        if (inputElement.value !== text) inputElement.value = text;
++        if (inputElement.selectionStart !== start || inputElement.selectionEnd !== end)
++            inputElement.setSelectionRange(start, end);
++        InputHelper.synchronizedSelections.set(inputElement, {
++            start: inputElement.selectionStart ?? 0, end: inputElement.selectionEnd ?? 0
++        });
+         inputElement.style.width = "20px";
+         inputElement.style.width = `${inputElement.scrollWidth}px`;
+     }
+@@ -574,11 +621,11 @@ export class InputHelper {
+         return modifiers;
+     }
+ 
+-    public static setPointerCapture(containerElement: HTMLInputElement, pointerId: number): void {
++    public static setPointerCapture(containerElement: HTMLInputElement | HTMLTextAreaElement, pointerId: number): void {
+         containerElement.setPointerCapture(pointerId);
+     }
+ 
+-    public static releasePointerCapture(containerElement: HTMLInputElement, pointerId: number): void {
++    public static releasePointerCapture(containerElement: HTMLInputElement | HTMLTextAreaElement, pointerId: number): void {
+         if (containerElement.hasPointerCapture(pointerId)) {
+             containerElement.releasePointerCapture(pointerId);
+         }

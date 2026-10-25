@@ -1,0 +1,36 @@
+[
+  {
+    "phase": "warm-A",
+    "variant": "stock",
+    "result": {
+      "version": "A",
+      "wasm": "runtime.a.wasm"
+    }
+  },
+  {
+    "phase": "warm-A",
+    "variant": "fixed",
+    "result": {
+      "version": "A",
+      "wasm": "runtime.a.wasm"
+    }
+  },
+  {
+    "phase": "navigate-B-cache-preserved",
+    "variant": "stock",
+    "result": {
+      "version": "A",
+      "wasm": "runtime.a.wasm",
+      "status": 404
+    }
+  },
+  {
+    "phase": "navigate-B-cache-preserved",
+    "variant": "fixed",
+    "result": {
+      "version": "B",
+      "wasm": "runtime.b.wasm",
+      "status": 200
+    }
+  }
+]

@@ -124,10 +124,10 @@ public sealed class AppSettingsService
         SetBrush(application, "AppTopActionHoverBorderBrush", useDark ? "#7DB3E0" : "#8ABCE8");
         SetBrush(application, "AppTopActionPressedBackgroundBrush", useDark ? "#243348" : "#243346");
         SetBrush(application, "AppTopActionAccentHoverBorderBrush", useDark ? "#78D5BF" : "#79D7C0");
-        SetBrush(application, "AppCaptionButtonBackgroundBrush", useDark ? "#D5DEE9" : "#E6ECF3");
-        SetBrush(application, "AppCaptionButtonForegroundBrush", "#162235");
-        SetBrush(application, "AppCaptionButtonHoverBrush", useDark ? "#EEF3F8" : "#FFFFFF");
-        SetBrush(application, "AppCaptionButtonPressedBrush", useDark ? "#BBC7D5" : "#C9D3DF");
+        SetBrush(application, "AppCaptionButtonBackgroundBrush", useDark ? "#182330" : "#E6ECF3");
+        SetBrush(application, "AppCaptionButtonForegroundBrush", useDark ? "#BEC9D7" : "#162235");
+        SetBrush(application, "AppCaptionButtonHoverBrush", useDark ? "#2B3A4D" : "#FFFFFF");
+        SetBrush(application, "AppCaptionButtonPressedBrush", useDark ? "#35485F" : "#C9D3DF");
         SetBrush(application, "AppCaptionClosePressedBrush", useDark ? "#9D3342" : "#8F2D39");
         SetBrush(application, "AppToolbarButtonBackgroundBrush", useDark ? "#263241" : "#FFFFFF");
         SetBrush(application, "AppToolbarButtonForegroundBrush", useDark ? "#F4F7FB" : "#162235");
@@ -159,6 +159,17 @@ public sealed class AppSettingsService
             AppSettingsResult? settings = JsonSerializer.Deserialize(
                 json,
                 AppJsonSerializerContext.TypeInfo<AppSettingsResult>());
+            using JsonDocument document = JsonDocument.Parse(json);
+            bool containsLegacyTokens = document.RootElement.TryGetProperty("accessToken", out _) ||
+                document.RootElement.TryGetProperty("refreshToken", out _);
+            if (settings is not null && containsLegacyTokens)
+            {
+                File.WriteAllText(
+                    path,
+                    JsonSerializer.Serialize(settings, AppJsonSerializerContext.TypeInfo<AppSettingsResult>()));
+            }
+
+            RestrictSettingsFilePermissions(path);
             if (settings is null ||
                 string.IsNullOrWhiteSpace(settings.ApiBaseUrl) ||
                 !IsValidThemeMode(settings.ThemeMode))
@@ -187,6 +198,7 @@ public sealed class AppSettingsService
             settings,
             AppJsonSerializerContext.TypeInfo<AppSettingsResult>());
         await File.WriteAllTextAsync(path, json, cancellationToken);
+        RestrictSettingsFilePermissions(path);
     }
 
     private static Window? ResolveMainWindow()
@@ -209,5 +221,27 @@ public sealed class AppSettingsService
         }
 
         return Path.Combine(baseDirectory, SettingsDirectoryName, SettingsFileName);
+    }
+
+    private static void RestrictSettingsFilePermissions(string path)
+    {
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsBrowser())
+        {
+            return;
+        }
+
+        try
+        {
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+        catch (PlatformNotSupportedException)
+        {
+        }
     }
 }

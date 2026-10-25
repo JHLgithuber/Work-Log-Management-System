@@ -1,0 +1,54 @@
+# 검증된 WASM 전달물 전용. 저장소 소스 빌드는 Dockerfile을 사용합니다.
+FROM python:3.12-slim AS backend-builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir uv==0.13.4
+
+COPY fastapi_backend/pyproject.toml fastapi_backend/uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+
+
+FROM python:3.12-slim AS runtime
+
+ARG VCS_REF=unknown
+LABEL org.opencontainers.image.revision=$VCS_REF
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/app/.venv/bin:$PATH" \
+    WORKLOG_APP_TITLE="Work Log Management System" \
+    WORKLOG_APP_VERSION="0.1.0" \
+    WORKLOG_CORS_ORIGINS="*" \
+    WORKLOG_CORS_ALLOW_CREDENTIALS="true" \
+    WORKLOG_JWT_ACCESS_TOKEN_EXPIRE_MINUTES="1440" \
+    WORKLOG_JWT_REFRESH_TOKEN_EXPIRE_DAYS="90" \
+    WORKLOG_DATABASE_URL="sqlite:////app/data/worklog.sqlite3"
+
+# Supply the existing database URL, JWT key, and optional bootstrap credentials
+# only at runtime. Do not put secrets in build arguments or the build context.
+WORKDIR /app
+
+RUN groupadd --system app \
+    && useradd --system --gid app --home-dir /app app \
+    && mkdir -p /app/data \
+    && chown -R app:app /app
+
+COPY --from=backend-builder --chown=app:app /app/.venv /app/.venv
+COPY --chown=app:app fastapi_backend/docker-entrypoint.sh fastapi_backend/main.py ./
+COPY --chown=app:app fastapi_backend/app ./app
+COPY --chown=app:app published-web /app/web
+RUN chmod +x /app/docker-entrypoint.sh
+
+USER app
+
+VOLUME ["/app/data"]
+EXPOSE 8000
+
+ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

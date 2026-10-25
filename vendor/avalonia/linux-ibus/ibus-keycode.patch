@@ -1,0 +1,13 @@
+--- a/src/Avalonia.FreeDesktop/DBusIme/IBus/IBusX11TextInputMethod.cs
++++ b/src/Avalonia.FreeDesktop/DBusIme/IBus/IBusX11TextInputMethod.cs
+@@ -163,6 +163,10 @@
+ 
+         protected override Task<bool> HandleKeyCore(RawKeyEventArgs args, int keyVal, int keyCode)
+         {
++            // X11 keycodes include the eight reserved protocol keycodes; IBus expects evdev.
++            if (keyCode >= 8)
++                keyCode -= 8;
++
+             IBusModifierMask state = default;
+             if (args.Modifiers.HasAllFlags(RawInputModifiers.Control))
+                 state |= IBusModifierMask.ControlMask;

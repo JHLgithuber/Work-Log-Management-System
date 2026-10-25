@@ -17,7 +17,6 @@ sealed class Program
     {
         PlatformCredentialStore.Configure(() => new DesktopCredentialStore());
         ConfigureLinuxInputMethod();
-        LinuxIbusKeycodePatch.Apply();
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 

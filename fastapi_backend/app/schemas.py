@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.domain import (
     DailyNote,
@@ -24,6 +24,14 @@ class TaskWriteRequest(BaseModel):
     start_at: datetime = DateBounds.MINIMUM
     due_at: datetime = DateBounds.MAXIMUM
     actual_end_at: datetime | None = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        title = value.strip()
+        if not title:
+            raise ValueError("The task title must not be blank.")
+        return title
 
     def to_create_command(self) -> TaskCreate:
         return TaskCreate(

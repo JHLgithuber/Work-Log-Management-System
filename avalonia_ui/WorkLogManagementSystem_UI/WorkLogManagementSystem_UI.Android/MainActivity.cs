@@ -15,10 +15,12 @@ using WorkLogManagementSystem_UI.Services;
 namespace WorkLogManagementSystem_UI.Android;
 
 [Activity(
-    Label = "WorkLogManagementSystem_UI.Android",
+    Label = "업무일지 관리체계",
     Theme = "@style/MyTheme.NoActionBar",
     Icon = "@drawable/icon",
     MainLauncher = true,
+    // One Avalonia lifetime owns one MainView; launcher intents must reuse its host.
+    LaunchMode = LaunchMode.SingleTask,
     WindowSoftInputMode = SoftInput.AdjustResize,
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize)]
 public class MainActivity : AvaloniaMainActivity<App>

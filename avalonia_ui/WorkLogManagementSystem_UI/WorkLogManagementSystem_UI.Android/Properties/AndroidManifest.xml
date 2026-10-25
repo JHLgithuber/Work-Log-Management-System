@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" android:installLocation="auto">
 	<uses-permission android:name="android.permission.INTERNET" />
 	<application
-		android:label="WorkLogManagementSystem_UI"
+		android:label="업무일지 관리체계"
 		android:icon="@drawable/Icon"
 		android:usesCleartextTraffic="true" />
 </manifest>
