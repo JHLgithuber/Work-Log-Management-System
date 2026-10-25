@@ -1,37 +1,42 @@
-# Frontend regression checks
+# 프런트엔드 회귀 검사
 
-Requires the .NET 10 SDK selected by the repository's `global.json`. From the repository root:
+저장소의 `global.json`이 지정한 .NET 10 SDK가 필요합니다. 저장소 루트에서 실행하세요.
 
 ```sh
 dotnet run --project avalonia_ui/WorkLogManagementSystem_UI/WorkLogManagementSystem_UI.Tests -c Release
 ```
 
-This dependency-free executable returns a nonzero exit code when a check fails. It builds the real shared Avalonia project, then exercises its generated commands against an in-memory HTTP handler. It does not start the application, load saved credentials/settings, or contact a backend. All synthetic dates are in 2099.
+별도 테스트 프레임워크에 의존하지 않는 실행 파일이며 검사 실패 시 0이 아닌 종료 코드를
+반환합니다. 실제 공통 Avalonia 프로젝트를 빌드하고 메모리 안의 HTTP 핸들러로 생성된
+명령들을 검사합니다. 앱을 시작하거나 저장된 자격 증명·설정을 읽거나 백엔드에
+접속하지 않습니다. 합성 날짜는 모두 2099년입니다.
 
-For control-level UI regressions, run the same project with `-- --ui`. This mode
-uses Avalonia.Headless and a synthetic HTTP handler; it does not load desktop
-settings or credentials. It checks manual ISO date entry on Enter/focus loss and
-invalid-date handling against the real MainView template and binding. Windows
-runtime interaction remains a separate validation step.
-It also verifies masked text is absent from automation value reads and change
-events, while ordinary text retains its accessible value and editing support.
+컨트롤 단위 UI 회귀 검사는 같은 프로젝트에 `-- --ui`를 전달해 실행합니다.
+Avalonia.Headless와 합성 HTTP 핸들러를 사용하며 데스크톱 설정이나 자격 증명은
+읽지 않습니다. 실제 MainView 템플릿과 바인딩을 대상으로 ISO 날짜 직접 입력의
+Enter·포커스 이동 확정과 잘못된 날짜 처리를 확인합니다. Windows에서의 실제
+상호작용은 별도로 검증해야 합니다. 마스킹된 문자열이 접근성 값 조회와 변경 이벤트에
+노출되지 않는지, 일반 텍스트의 접근성 값과 편집 기능이 유지되는지도 검사합니다.
 
-Coverage:
+검사 범위:
 
-- Saving while navigating preserves the original task-entry date and text, without replacing the newer editor.
-- A retry after task creation succeeds but entry saving fails updates the original task instead of creating a duplicate.
-- Failed daily-note reads block writes until a successful refresh has loaded the existing note.
-- Logout invalidates in-flight task and daily-note reads.
-- Refresh, date navigation, and task reselection cannot race pending task/note saves; failed writes retain drafts.
-- Clearing and reselecting a date recovers both loaders.
-- Displaying and resaving task dates preserves Korean calendar days regardless of the device timezone, including midnight and unbounded-date sentinels.
+- 탐색 중 저장해도 원래 업무 기록의 날짜와 텍스트를 유지하고 새 편집 화면을 덮어쓰지 않습니다.
+- 과업 생성 성공 후 기록 저장이 실패해도 재시도 시 원래 과업을 갱신하고 중복 생성하지 않습니다.
+- 일별 비고 읽기가 실패하면 새로고침으로 기존 비고를 읽을 때까지 쓰기를 막습니다.
+- 로그아웃하면 진행 중인 과업·일별 비고 읽기 응답을 무효화합니다.
+- 새로고침·날짜 이동·과업 재선택이 대기 중인 과업·비고 저장과 경합하지 않으며 실패한 초안을 유지합니다.
+- 날짜 선택을 지웠다가 다시 선택하면 두 로더를 복구합니다.
+- 기기 시간대와 관계없이 과업 날짜를 표시·재저장할 때 한국 달력 날짜를 보존합니다.
+  자정 경계와 날짜 제한 없음에 사용하는 특수값도 포함합니다.
 
-On Linux, rerun with `TZ=UTC`, `TZ=Asia/Seoul`, `TZ=America/Los_Angeles`, and `TZ=Australia/Sydney` to cover device timezone differences.
+Linux에서는 `TZ=UTC`, `TZ=Asia/Seoul`, `TZ=America/Los_Angeles`,
+`TZ=Australia/Sydney`로 각각 다시 실행해 기기 시간대 차이를 검사하세요.
 
-The runner does not replace browser/device interaction tests. A browser build can be checked separately:
+이 검사기는 브라우저·기기 상호작용 검사를 대신하지 않습니다. 브라우저 빌드는 별도로 확인합니다.
 
 ```sh
 dotnet build avalonia_ui/WorkLogManagementSystem_UI/WorkLogManagementSystem_UI.Browser -c Release
 ```
 
-Native WebAssembly compilation may require the matching `wasm-tools` workload. Android and iOS require their platform workloads and are not covered by this runner.
+네이티브 WebAssembly 컴파일에는 해당 버전의 `wasm-tools` 워크로드가 필요할 수 있습니다.
+Android·iOS는 각 플랫폼 워크로드가 필요하며 이 검사기의 검증 범위에 포함되지 않습니다.

@@ -1,37 +1,38 @@
-# Android single-view lifecycle regression
+# Android 단일 화면 수명주기 회귀 검사
 
-Use a disposable API 35 emulator and isolated backend with a synthetic account.
-Do not use a physical device or production account. This app has one Avalonia
-MainView per process; MainActivity must use `singleTask` so a second launcher
-intent does not attach that view to a second live host.
+폐기용 API 35 에뮬레이터, 격리된 백엔드, 합성 테스트 계정을 사용합니다.
+실기기나 운영 계정은 사용하지 않습니다. 이 앱은 프로세스마다 Avalonia
+`MainView` 하나를 유지합니다. 두 번째 런처 인텐트가 같은 뷰를 살아 있는 다른
+호스트에 연결하지 않도록 `MainActivity`는 `singleTask`를 사용해야 합니다.
 
-## Reproduction and checks
+## 재현 및 확인 절차
 
-1. Install the Debug x86_64 APK, log in, add a task draft, and type a distinctive
-   title without saving. Record the app PID and current Activity token.
-2. Send MAIN/LAUNCHER intents to the resolved MainActivity three times with
-   `adb -s <emulator> shell am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x18000000 -n <component>`.
-   Each request must reuse the running Activity; the title and login state must
-   remain visible. The old `standard` launch mode can crash with "already has a
-   visual parent". Merely moving the view between roots is unsafe when layout
-   work is queued, and is not the implemented fix.
-3. Rotate portrait/landscape twice. Check the draft, scrolling and save control.
-4. On this disposable emulator only, change font scale from 1.0 to 1.15 and
-   back, restoring the original value afterward. Verify app-PID
-   `wm_on_destroy_called` / `wm_on_create_called` pairs for MainActivity, the same
-   process, and draft/login preservation. Changing a setting without observing
-   OnCreate is not evidence of Activity recreation.
-5. Save the synthetic draft once. Confirm one create request, with no duplicate
-   event-driven save. Go Home and return three times; also test Android Back.
-6. With no unsaved input, restart the app process twice. Remembered credentials
-   may be restored but Login is still required. Unsaved process-death recovery
-   is not implemented or claimed by this change.
-7. Stop only the isolated backend; check bounded connection-error feedback.
-   Restart it and retry login. Distinguish this expected outage from unexplained
-   `Socket closed` errors; do not add unconditional retries to hide them.
+1. Debug x86_64 APK를 설치하고 로그인합니다. 과업 초안을 추가한 뒤 구별하기
+   쉬운 제목을 입력하되 저장하지 않습니다. 앱 PID와 현재 Activity 식별자를 기록합니다.
+2. 확인한 MainActivity에 다음 명령으로 MAIN/LAUNCHER 인텐트를 세 번 보냅니다.
+   `adb -s <emulator> shell am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x18000000 -n <component>`
+   요청마다 실행 중인 Activity를 재사용해야 하며 제목과 로그인 상태가 유지되어야
+   합니다. 기존 `standard` 실행 모드에서는 "already has a visual parent" 오류로
+   종료될 수 있습니다. 대기 중인 레이아웃 작업이 있을 때 뷰만 다른 루트로 옮기는
+   방식은 안전하지 않으며, 이번 수정에서도 사용하지 않습니다.
+3. 세로·가로 회전을 두 차례 반복합니다. 초안, 스크롤, 저장 버튼을 확인합니다.
+4. 폐기용 에뮬레이터에서만 글꼴 배율을 1.0에서 1.15로 바꿨다가 되돌립니다.
+   검사가 끝나면 원래 설정값을 복원합니다. 앱 PID의 로그에서 MainActivity의
+   `wm_on_destroy_called` / `wm_on_create_called` 쌍, 동일 프로세스 유지,
+   초안·로그인 상태 보존을 확인합니다. 설정만 바꾸고 `OnCreate`를 확인하지 않았다면
+   Activity가 재생성됐다는 증거로 취급하지 않습니다.
+5. 합성 초안을 한 번 저장합니다. 생성 요청이 한 건인지, 이벤트 중복으로 저장이
+   반복되지 않는지 확인합니다. 홈 화면에 나갔다가 세 번 복귀하고 Android 뒤로 가기도
+   검사합니다.
+6. 미저장 입력이 없는 상태에서 앱 프로세스를 두 번 재실행합니다. 기억한 계정 정보가
+   복원될 수 있지만 로그인 버튼은 여전히 눌러야 합니다. 이번 변경은 프로세스 종료 시
+   미저장 초안을 복구하는 기능을 구현하거나 보장하지 않습니다.
+7. 격리된 백엔드만 중단하고 연결 오류가 제한된 시간 안에 표시되는지 확인합니다.
+   백엔드를 재시작한 뒤 로그인을 다시 시도합니다. 이 의도적인 중단과 원인이 밝혀지지
+   않은 `Socket closed` 오류를 구분하고, 무조건 재시도하여 오류를 숨기지 않습니다.
 
-Review app-scoped fatal/ANR logs and live Activity count after repetition. A
-stable count and no new event subscriptions are useful checks, but are not a
-managed/native heap leak proof. SingleTask changes repeated-launch/back-stack
-behavior intentionally; multiple independent app windows are not supported.
-Keep result counts, OS/API, source SHA and any untested paths with the QA report.
+반복 검사 후 앱 범위의 치명적 오류·ANR 로그와 살아 있는 Activity 개수를 확인합니다.
+개수가 일정하고 새 이벤트 구독이 없다는 점은 유용한 확인 사항이지만, 관리 힙이나
+네이티브 힙의 메모리 누수가 없다는 증명은 아닙니다. `singleTask`는 반복 실행과
+뒤로 가기 스택 동작을 의도적으로 바꾸며, 독립적인 여러 앱 창은 지원하지 않습니다.
+검사 횟수, OS/API, 소스 SHA, 미검증 경로를 QA 보고서에 함께 기록합니다.
