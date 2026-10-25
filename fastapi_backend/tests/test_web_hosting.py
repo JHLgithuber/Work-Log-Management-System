@@ -140,3 +140,49 @@ def test_static_directory_redirects_remain_owned_by_static_files(application_fac
         assert response.status_code == 307
         assert response.headers["location"] == "http://testserver/assets/?probe=value"
         assert client.get("/assets/").text == "Synthetic asset directory"
+
+
+@pytest.mark.parametrize("path", ["/", "/main.js", "/_framework/runtime.wasm"])
+def test_static_responses_revalidate_with_content_etag(application_factory, path):
+    with TestClient(application_factory()) as client:
+        first = client.get(path)
+        assert first.headers["cache-control"] == "no-cache"
+        assert first.headers["etag"].startswith('"sha256-')
+        head = client.head(path)
+        assert head.headers["etag"] == first.headers["etag"]
+        cached = client.get(path, headers={"If-None-Match": first.headers["etag"]})
+        assert cached.status_code == 304
+        assert cached.headers["cache-control"] == "no-cache"
+        assert cached.content == b""
+
+
+def test_equal_size_and_mtime_replacement_does_not_return_false_304(application_factory, tmp_path):
+    import os
+
+    with TestClient(application_factory()) as client:
+        script = tmp_path / "web" / "main.js"
+        first = client.get("/main.js")
+        original_stat = script.stat()
+        original = script.read_bytes()
+        replacement = original.replace(b"true", b"null")
+        assert len(replacement) == len(original) and replacement != original
+        script.write_bytes(replacement)
+        os.utime(script, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+        assert script.stat().st_size == original_stat.st_size
+        assert script.stat().st_mtime_ns == original_stat.st_mtime_ns
+        updated = client.get("/main.js", headers={
+            "If-None-Match": first.headers["etag"],
+            "If-Modified-Since": first.headers["last-modified"],
+        })
+        assert updated.status_code == 200 and updated.content == replacement
+        assert updated.headers["etag"] != first.headers["etag"]
+        legacy = client.get("/main.js", headers={"If-Modified-Since": first.headers["last-modified"]})
+        assert legacy.status_code == 200 and legacy.content == replacement
+        weak = client.get("/main.js", headers={"If-None-Match": "W/" + updated.headers["etag"]})
+        assert weak.status_code == 304
+
+
+def test_static_cache_policy_does_not_change_api(application_factory):
+    with TestClient(application_factory()) as client:
+        assert "cache-control" not in client.get("/health").headers
+        assert "cache-control" not in client.get("/auth/me").headers
