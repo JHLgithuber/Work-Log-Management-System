@@ -1,7 +1,7 @@
 from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 root=Path(__file__).resolve().parent
-output=root/'Avalonia.Browser.11.3.22-qa-ime.3.nupkg'
+output=root/'Avalonia.Browser.11.3.22-qa-ime.6.nupkg'
 with ZipFile(root/'official.nupkg') as source, ZipFile(output,'w',ZIP_DEFLATED) as target:
     for entry in source.infolist():
         if entry.filename == '.signature.p7s':
@@ -13,6 +13,6 @@ with ZipFile(root/'official.nupkg') as source, ZipFile(output,'w',ZIP_DEFLATED) 
             asset=root/'source/src/Browser/Avalonia.Browser'/entry.filename
             if asset.is_file(): data=asset.read_bytes()
         if entry.filename.endswith('.nuspec'):
-            data=data.replace(b'<version>11.3.22</version>',b'<version>11.3.22-qa-ime.3</version>')
+            data=data.replace(b'<version>11.3.22</version>',b'<version>11.3.22-qa-ime.6</version>')
         target.writestr(entry,data)
 print(output.name)

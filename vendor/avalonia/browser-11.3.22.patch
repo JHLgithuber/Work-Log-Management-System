@@ -1,8 +1,16 @@
 diff --git a/src/Browser/Avalonia.Browser/BrowserTextInputMethod.cs b/src/Browser/Avalonia.Browser/BrowserTextInputMethod.cs
-index 1172285..6950270 100644
+index 1172285..1c4d8f9 100644
 --- a/src/Browser/Avalonia.Browser/BrowserTextInputMethod.cs
 +++ b/src/Browser/Avalonia.Browser/BrowserTextInputMethod.cs
-@@ -11,10 +11,11 @@ internal class BrowserTextInputMethod(
+@@ -2,6 +2,7 @@
+ using System.Runtime.InteropServices.JavaScript;
+ using Avalonia.Browser.Interop;
+ using Avalonia.Input.TextInput;
++using Avalonia.Input;
+ 
+ namespace Avalonia.Browser;
+ 
+@@ -11,10 +12,14 @@ internal class BrowserTextInputMethod(
      JSObject inputElement)
      : ITextInputMethodImpl
  {
@@ -12,10 +20,13 @@ index 1172285..6950270 100644
      private readonly BrowserInputHandler _inputHandler = inputHandler ?? throw new ArgumentNullException(nameof(inputHandler));
      private TextInputMethodClient? _client;
 +    private bool _multiline;
++    private TextInputMethodClient? _compositionClient;
++    private IInputElement? _compositionTarget;
++    private string? _compositionText;
  
      public bool IsComposing { get; private set; }
  
-@@ -29,12 +30,14 @@ public void SetClient(TextInputMethodClient? client)
+@@ -29,12 +34,14 @@ public void SetClient(TextInputMethodClient? client)
          if (_client != null)
          {
              _client.SurroundingTextChanged -= SurroundingTextChanged;
@@ -30,7 +41,7 @@ index 1172285..6950270 100644
              client.InputPaneActivationRequested += InputPaneActivationRequested;
          }
  
-@@ -92,6 +95,13 @@ public void SetCursorRect(Rect rect)
+@@ -92,6 +99,13 @@ public void SetCursorRect(Rect rect)
  
      public void SetOptions(TextInputOptions options)
      {
@@ -44,7 +55,7 @@ index 1172285..6950270 100644
      }
  
      public void Reset()
-@@ -100,8 +110,26 @@ public void Reset()
+@@ -100,8 +114,26 @@ public void Reset()
          InputHelper.SetSurroundingText(_inputElement, "", 0, 0);
      }
  
@@ -72,8 +83,87 @@ index 1172285..6950270 100644
          if (inputType != "deleteByComposition")
          {
              if (inputType == "deleteContentBackward")
+@@ -127,30 +159,68 @@ public void OnCompositionStart()
+         if (_client == null)
+             return;
+ 
++        if (_compositionTarget is InputElement previous)
++            previous.PropertyChanged -= CompositionTargetPropertyChanged;
++        _compositionClient = _client;
++        _compositionTarget = BrowserWindowingPlatform.Keyboard.FocusedElement;
++        _compositionText = null;
++        if (_compositionTarget is InputElement target)
++            target.PropertyChanged += CompositionTargetPropertyChanged;
+         _client.SetPreeditText(null);
+         IsComposing = true;
+     }
+ 
+     public void OnCompositionUpdate(string? data)
+     {
+-        if (_client == null)
+-            return;
++        _compositionText = data;
++        _compositionClient?.SetPreeditText(data);
++    }
+ 
+-        _client.SetPreeditText(data);
++    private void CompositionTargetPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs args)
++    {
++        if (args.Property == InputElement.IsFocusedProperty && sender is InputElement { IsFocused: false } && IsComposing)
++        {
++            // Finish native composition before TextBox clears its selection on blur.
++            // Some IMEs deliver compositionend synchronously from blur; the fallback
++            // covers clients whose native editor does not produce an end event.
++            InputHelper.BlurElement(_inputElement);
++            if (IsComposing)
++            {
++                // Retire the old native editor before another client can compose.
++                // A delayed end from it must not end the new client's composition.
++                var previous = _inputElement;
++                _inputElement = InputHelper.ReplaceInputElement(previous);
++                previous.Dispose();
++                OnCompositionEnd(_compositionText);
++            }
++        }
+     }
+ 
+     public void OnCompositionEnd(string? data)
+     {
+-        if (_client == null)
+-            return;
+-
++        // The keyboard focus may have changed before the native DOM blur ends
++        // composition. Commit to its original target, never the newly focused field.
++        var client = _compositionClient;
++        var target = _compositionTarget;
++        if (target is InputElement input)
++            input.PropertyChanged -= CompositionTargetPropertyChanged;
++        _compositionClient = null;
++        _compositionTarget = null;
++        _compositionText = null;
+         IsComposing = false;
++        client?.SetPreeditText(null);
+ 
+-        _client.SetPreeditText(null);
+-        
+-        if (data != null)
++        if (data != null && target is Visual { IsAttachedToVisualTree: true } && target.IsEffectivelyEnabled)
+         {
+-            _inputHandler.RawTextEvent(data);
++            if (ReferenceEquals(target, BrowserWindowingPlatform.Keyboard.FocusedElement))
++                _inputHandler.RawTextEvent(data);
++            else
++                target.RaiseEvent(new TextInputEventArgs
++                {
++                    Text = data,
++                    Source = target,
++                    RoutedEvent = InputElement.TextInputEvent
++                });
+         }
+     }
+ }
 diff --git a/src/Browser/Avalonia.Browser/Interop/InputHelper.cs b/src/Browser/Avalonia.Browser/Interop/InputHelper.cs
-index bb2884b..a855ce8 100644
+index bb2884b..bee0cc5 100644
 --- a/src/Browser/Avalonia.Browser/Interop/InputHelper.cs
 +++ b/src/Browser/Avalonia.Browser/Interop/InputHelper.cs
 @@ -31,8 +31,8 @@ public static Task<bool> OnKeyUp(int topLevelId, string code, string key, int mo
@@ -87,7 +177,7 @@ index bb2884b..a855ce8 100644
  
      [JSExport]
      public static Task OnCompositionStart(int topLevelId) =>
-@@ -89,6 +89,9 @@ public static Task OnKeyboardGeometryChange(int topLevelId, double x, double y,
+@@ -89,9 +89,18 @@ public static Task OnKeyboardGeometryChange(int topLevelId, double x, double y,
      [return: JSMarshalAs<JSType.Array<JSType.Number>>]
      public static partial double[] GetCoalescedEvents(JSObject pointerEvent);
  
@@ -97,8 +187,17 @@ index bb2884b..a855ce8 100644
      [JSImport("InputHelper.clearInput", AvaloniaModule.MainModuleName)]
      public static partial void ClearInputElement(JSObject htmlElement);
  
++    [JSImport("InputHelper.replaceInputElement", AvaloniaModule.MainModuleName)]
++    public static partial JSObject ReplaceInputElement(JSObject htmlElement);
++
++    [JSImport("InputHelper.blurElement", AvaloniaModule.MainModuleName)]
++    public static partial void BlurElement(JSObject htmlElement);
++
+     [JSImport("InputHelper.focusElement", AvaloniaModule.MainModuleName)]
+     public static partial void FocusElement(JSObject htmlElement);
+ 
 diff --git a/src/Browser/Avalonia.Browser/webapp/modules/avalonia/input.ts b/src/Browser/Avalonia.Browser/webapp/modules/avalonia/input.ts
-index e70c43e..0cf1425 100644
+index e70c43e..ae79b65 100644
 --- a/src/Browser/Avalonia.Browser/webapp/modules/avalonia/input.ts
 +++ b/src/Browser/Avalonia.Browser/webapp/modules/avalonia/input.ts
 @@ -70,6 +70,7 @@ type ReadableDataValue = {
@@ -196,13 +295,13 @@ index e70c43e..0cf1425 100644
          topLevelId: number) {
          if ("virtualKeyboard" in navigator) {
              // (navigator as any).virtualKeyboard.overlaysContent = true;
-@@ -508,7 +526,24 @@ export class InputHelper {
+@@ -508,15 +526,40 @@ export class InputHelper {
          return () => {};
      }
  
 -    public static clearInput(inputElement: HTMLInputElement) {
-+    public static setMultiline(inputElement: HTMLInputElement | HTMLTextAreaElement, multiline: boolean): HTMLInputElement | HTMLTextAreaElement {
-+        if (inputElement.tagName === (multiline ? "TEXTAREA" : "INPUT")) return inputElement;
++    public static setMultiline(inputElement: HTMLInputElement | HTMLTextAreaElement, multiline: boolean, replace: boolean = false): HTMLInputElement | HTMLTextAreaElement {
++        if (!replace && inputElement.tagName === (multiline ? "TEXTAREA" : "INPUT")) return inputElement;
 +
 +        // A textarea with canceled line breaks can corrupt Gboard's next composition.
 +        // Use the browser's native single-line editor for single-line clients.
@@ -218,11 +317,19 @@ index e70c43e..0cf1425 100644
 +        return replacement;
 +    }
 +
++    public static replaceInputElement(inputElement: HTMLInputElement | HTMLTextAreaElement): HTMLInputElement | HTMLTextAreaElement {
++        return InputHelper.setMultiline(inputElement, inputElement.tagName === "TEXTAREA", true);
++    }
++
 +    public static clearInput(inputElement: HTMLInputElement | HTMLTextAreaElement) {
          inputElement.value = "";
      }
  
-@@ -516,7 +551,7 @@ export class InputHelper {
++    public static blurElement(inputElement: HTMLElement) {
++        inputElement.blur();
++    }
++
+     public static focusElement(inputElement: HTMLElement) {
          inputElement.focus();
      }
  
@@ -231,7 +338,7 @@ index e70c43e..0cf1425 100644
          if (kind === "default") {
              inputElement.style.removeProperty("cursor");
          } else {
-@@ -524,7 +559,7 @@ export class InputHelper {
+@@ -524,7 +567,7 @@ export class InputHelper {
          }
      }
  
@@ -240,7 +347,7 @@ index e70c43e..0cf1425 100644
          inputElement.style.left = (x).toFixed(0) + "px";
          inputElement.style.top = (y).toFixed(0) + "px";
  
-@@ -534,21 +569,25 @@ export class InputHelper {
+@@ -534,21 +577,25 @@ export class InputHelper {
          inputElement.style.top = (y - top).toFixed(0) + "px";
      }
  
@@ -271,7 +378,7 @@ index e70c43e..0cf1425 100644
          inputElement.style.width = "20px";
          inputElement.style.width = `${inputElement.scrollWidth}px`;
      }
-@@ -574,11 +613,11 @@ export class InputHelper {
+@@ -574,11 +621,11 @@ export class InputHelper {
          return modifiers;
      }
  
