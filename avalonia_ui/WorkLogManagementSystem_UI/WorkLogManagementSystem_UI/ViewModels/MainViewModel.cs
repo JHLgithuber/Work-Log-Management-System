@@ -66,6 +66,8 @@ public partial class MainViewModel : ViewModelBase
     private DateTime? _editorDueDateBaseline;
     private DateTime? _editorActualEndDateBaseline;
     private int _taskLoadOperationVersion;
+    private DateTime? _taskSnapshotDate;
+    private int _taskSnapshotSession = -1;
     private int _editorContextVersion;
     private int _sessionVersion;
     private int _taskWriteVersion;
@@ -572,7 +574,12 @@ public partial class MainViewModel : ViewModelBase
             _isApplyingTaskSelection = true;
             try
             {
-                Tasks = new ObservableCollection<TaskDto>(SortTasks(loadedTasks));
+                var sortedTasks = SortTasks(loadedTasks);
+                if (_taskSnapshotDate != requestedDate || _taskSnapshotSession != sessionVersion ||
+                    !TaskTreeRefresh.IsUnchanged(Tasks, sortedTasks))
+                    Tasks = new ObservableCollection<TaskDto>(sortedTasks);
+                _taskSnapshotDate = requestedDate;
+                _taskSnapshotSession = sessionVersion;
                 reloadedTask = selectedTaskId is null ? null : FindTaskById(Tasks, selectedTaskId.Value);
                 SelectedTask = reloadedTask;
             }

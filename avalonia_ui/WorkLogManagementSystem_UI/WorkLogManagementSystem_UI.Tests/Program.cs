@@ -5,11 +5,15 @@ using WorkLogManagementSystem_UI.Models;
 using WorkLogManagementSystem_UI.Services;
 using WorkLogManagementSystem_UI.ViewModels;
 
+if (args.Contains("--large-list")) return LargeListChecks.Run();
+
 if (args.Contains("--ui")) return UiRegressionChecks.Run();
 
 // Dependency-free regression runner. All requests stay in this fake handler.
 var cases = new (string Name, Func<Task> Run)[]
 {
+    ("A new date keeps the original snapshot replacement boundary", RefreshReuseChecks.DateContext),
+    ("Unchanged refresh reuses rows; changed snapshots preserve fallback and drafts", RefreshReuseChecks.Run),
     ("Saving keeps the original date and entry when navigation changes", SaveUsesSnapshot),
     ("A failed entry save retries the existing task instead of creating a duplicate", PartialSaveKeepsIdentity),
     ("Failed daily-note loading cannot overwrite an unseen note", FailedNoteLoadDisablesSave),
