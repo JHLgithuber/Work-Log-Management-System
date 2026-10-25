@@ -25,7 +25,7 @@
         <PackageVersion Include="SkiaSharp.NativeAssets.iOS" Version="3.119.4" />
 
         <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-        <PackageVersion Include="Lib.Harmony" Version="2.4.3" />
+        <PackageVersion Include="Avalonia.FreeDesktop" Version="11.3.22.1-qa-ibus.1" />
         <PackageVersion Include="Tmds.DBus.Protocol" Version="0.21.3" />
 
         <PackageVersion Include="Xamarin.AndroidX.Core.SplashScreen" Version="1.0.1.17" />
