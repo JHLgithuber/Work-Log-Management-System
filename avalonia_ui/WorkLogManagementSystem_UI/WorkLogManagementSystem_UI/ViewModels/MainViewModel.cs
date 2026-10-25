@@ -964,28 +964,37 @@ public partial class MainViewModel : ViewModelBase
 
         int taskId = SelectedTask.Id;
         DateTime entryDate = SelectedDate.Value.Date;
+        int editorVersion = _editorContextVersion;
+        int sessionVersion = _sessionVersion;
+        bool IsCurrentEditor() => editorVersion == _editorContextVersion &&
+            sessionVersion == _sessionVersion && SelectedTask?.Id == taskId && SelectedDate?.Date == entryDate;
         try
         {
             IsDeleteDateEntryConfirmationOpen = false;
             using WorkLogApiClient client = CreateAuthenticatedClient();
             await client.DeleteWorkEntryAsync(taskId, entryDate, CancellationToken.None);
 
-            UpdateEditorWithoutDirtyTracking(() =>
+            if (IsCurrentEditor())
             {
-                EditorPerformedContent = string.Empty;
-                EditorDailyRetrospective = string.Empty;
-            });
-            _editorPerformedContentBaseline = string.Empty;
-            _editorDailyRetrospectiveBaseline = string.Empty;
-            RecomputeEditorDirtyState();
-            await LoadTasksAsync();
-            SelectedTask = FindTaskById(Tasks, taskId);
-            StatusMessage = $"{entryDate:yyyy-MM-dd}의 수행내용과 회고를 삭제했습니다.";
+                UpdateEditorWithoutDirtyTracking(() =>
+                {
+                    EditorPerformedContent = string.Empty;
+                    EditorDailyRetrospective = string.Empty;
+                });
+                _editorPerformedContentBaseline = string.Empty;
+                _editorDailyRetrospectiveBaseline = string.Empty;
+                RecomputeEditorDirtyState();
+                StatusMessage = $"{entryDate:yyyy-MM-dd}의 수행내용과 회고를 삭제했습니다.";
+            }
+            if (sessionVersion == _sessionVersion && IsAuthenticated) await LoadTasksAsync();
         }
         catch (Exception error)
         {
-            StatusMessage = $"해당일 기록 삭제 실패: {error.Message}";
-            ShowServerCommunicationFailure(error, "당일 기록 삭제 실패");
+            if (IsCurrentEditor())
+            {
+                StatusMessage = $"해당일 기록 삭제 실패: {error.Message}";
+                ShowServerCommunicationFailure(error, "당일 기록 삭제 실패");
+            }
         }
     }
 
@@ -1016,20 +1025,31 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
+        int taskId = SelectedTask.Id;
+        int editorVersion = _editorContextVersion;
+        int sessionVersion = _sessionVersion;
+        bool IsCurrentEditor() => editorVersion == _editorContextVersion &&
+            sessionVersion == _sessionVersion && SelectedTask?.Id == taskId;
         try
         {
             IsDeleteTaskConfirmationOpen = false;
             using WorkLogApiClient client = CreateAuthenticatedClient();
-            await client.DeleteTaskAsync(SelectedTask.Id, CancellationToken.None);
-            StatusMessage = "선택한 과업과 모든 하위 과업을 삭제했습니다.";
-            HasUnsavedTaskChanges = false;
-            ClearEditor();
-            await LoadTasksAsync();
+            await client.DeleteTaskAsync(taskId, CancellationToken.None);
+            if (IsCurrentEditor())
+            {
+                StatusMessage = "선택한 과업과 모든 하위 과업을 삭제했습니다.";
+                HasUnsavedTaskChanges = false;
+                ClearEditor();
+            }
+            if (sessionVersion == _sessionVersion && IsAuthenticated) await LoadTasksAsync();
         }
         catch (Exception error)
         {
-            StatusMessage = $"삭제 실패: {error.Message}";
-            ShowServerCommunicationFailure(error, "과업 삭제 실패");
+            if (IsCurrentEditor())
+            {
+                StatusMessage = $"삭제 실패: {error.Message}";
+                ShowServerCommunicationFailure(error, "과업 삭제 실패");
+            }
         }
     }
 

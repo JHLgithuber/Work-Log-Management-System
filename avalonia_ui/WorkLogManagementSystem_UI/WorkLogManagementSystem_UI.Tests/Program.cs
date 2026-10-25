@@ -12,6 +12,8 @@ if (args.Contains("--ui")) return UiRegressionChecks.Run();
 // Dependency-free regression runner. All requests stay in this fake handler.
 var cases = new (string Name, Func<Task> Run)[]
 {
+    ("기록 삭제 완료가 이동한 편집 내용을 지우지 않는다", () => DeleteKeepsNewEditor(true)),
+    ("과업 삭제 완료가 새 초안을 지우지 않는다", () => DeleteKeepsNewEditor(false)),
     ("A new date keeps the original snapshot replacement boundary", RefreshReuseChecks.DateContext),
     ("Unchanged refresh reuses rows; changed snapshots preserve fallback and drafts", RefreshReuseChecks.Run),
     ("Saving keeps the original date and entry when navigation changes", SaveUsesSnapshot),
@@ -61,6 +63,35 @@ static TaskDto SavedTask() => new()
 };
 static HttpResponseMessage Json(object value) => new(HttpStatusCode.OK) { Content = JsonContent.Create(value) };
 static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
+
+static async Task DeleteKeepsNewEditor(bool entry)
+{
+    var pending = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+    string? deletedPath = null;
+    var handler = new FakeHandler(request =>
+    {
+        if (request.Method == HttpMethod.Delete) { deletedPath = request.RequestUri!.AbsolutePath; return pending.Task; }
+        return Task.FromResult(FakeHandler.Default(request));
+    });
+    var model = Model(handler);
+    var task = SavedTask();
+    task.Entries.Add(new WorkEntryDto { Id = 1, TaskId = 7, EntryDate = new DateOnly(2099, 1, 10), PerformedContent = "삭제할 합성 기록" });
+    model.Tasks.Add(task);
+    model.SelectedTask = task;
+    Task deletion = entry ? model.ConfirmDeleteSelectedDateEntryCommand.ExecuteAsync(null)
+        : model.ConfirmDeleteTaskCommand.ExecuteAsync(null);
+    Check(deletedPath == (entry ? "/tasks/7/entries/2099-01-10" : "/tasks/7"), "삭제 대상이 달라짐");
+    model.NewRootTaskCommand.Execute(null);
+    model.EditorTitle = "새 합성 초안";
+    model.EditorPerformedContent = "삭제 대상과 무관한 새 수행 내용";
+    model.EditorDailyRetrospective = "새 회고";
+    pending.SetResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+    await deletion;
+    Check(model.IsNewTask && model.EditorTitle == "새 합성 초안" &&
+        model.EditorPerformedContent == "삭제 대상과 무관한 새 수행 내용" &&
+        model.EditorDailyRetrospective == "새 회고" && model.HasUnsavedTaskChanges,
+        "이전 삭제 응답이 새 편집 초안을 변경함");
+}
 
 static async Task SaveUsesSnapshot()
 {
